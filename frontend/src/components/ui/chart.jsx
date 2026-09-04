@@ -1,0 +1,2 @@
+// chart component - stub
+export {};

@@ -1,0 +1,2 @@
+// sheet component - stub
+export {};

@@ -1,0 +1,7 @@
+from .institucional import INDICATOR_SPECS as INSTITUCIONAL_SPECS
+
+INDICATOR_SPECS = {
+    **INSTITUCIONAL_SPECS,
+}
+
+__all__ = ["INDICATOR_SPECS"]

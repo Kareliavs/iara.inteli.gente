@@ -1,0 +1,2 @@
+// breadcrumb component - stub
+export {};

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inteli.gente</title>
+
+  <meta name="description" content="Plataforma de análise do nível de maturidade dos municípios brasileiros." />
+  <meta name="author" content="Inteli.gente" />
+
+  <meta property="og:title" content="Inteli.gente" />
+  <meta property="og:description" content="Plataforma de análise do nível de maturidade dos municípios brasileiros." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="https://seu-dominio.com/og-image.png" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@seu_usuario" />
+  <meta name="twitter:title" content="Inteli.gente" />
+  <meta name="twitter:description" content="Plataforma de análise do nível de maturidade dos municípios brasileiros." />
+  <meta name="twitter:image" content="https://seu-dominio.com/og-image.png" />
+
+  <link rel="icon" type="image/png" href="/logo_inteli.gente.png" />
+</head>
+
+
+  <body>
+    <div id="root"></div>
+    <div vw class="enabled notranslate vlibras-widget-root" aria-label="Acessível com VLibras">
+      <div vw-access-button class="active"></div>
+      <div vw-plugin-wrapper>
+        <div class="vw-plugin-top-wrapper"></div>
+      </div>
+    </div>
+    <script src="https://vlibras.gov.br/app/vlibras-plugin.js"></script>
+    <script>
+      new window.VLibras.Widget("https://vlibras.gov.br/app");
+
+      const fixVLibrasTutorialPopup = () => {
+        const buttons = Array.from(document.querySelectorAll("button, a, [role='button']"));
+        const tutorialButton = buttons.find((element) =>
+          /sim,\s*ir para o tutorial/i.test(element.textContent || "")
+        );
+        const noThanksButton = buttons.find((element) =>
+          /n[aã]o,\s*obrigado/i.test(element.textContent || "")
+        );
+
+        if (!tutorialButton || !noThanksButton) return;
+
+        const wrapper = document.querySelector("[vw-plugin-wrapper]");
+        const popup = tutorialButton.closest("div");
+        const container = popup?.parentElement;
+
+        if (wrapper instanceof HTMLElement) {
+          wrapper.classList.add("vlibras-has-tutorial-popup");
+        }
+
+        if (container instanceof HTMLElement) {
+          container.classList.add("vlibras-tutorial-container");
+        }
+
+        if (popup instanceof HTMLElement) {
+          popup.classList.add("vlibras-tutorial-popup");
+        }
+      };
+
+      window.setTimeout(fixVLibrasTutorialPopup, 1200);
+      window.setTimeout(fixVLibrasTutorialPopup, 3000);
+      new MutationObserver(fixVLibrasTutorialPopup).observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

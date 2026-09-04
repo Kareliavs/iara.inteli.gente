@@ -1,0 +1,19 @@
+from .arranjos_urbanos import INDICATOR_SPECS as ARRANJOS_URBANOS_SPECS
+from .desigualdade_renda import INDICATOR_SPECS as DESIGUALDADE_RENDA_SPECS
+from .emprego import INDICATOR_SPECS as EMPREGO_SPECS
+from .financas_publicas import INDICATOR_SPECS as FINANCAS_PUBLICAS_SPECS
+from .idhm import INDICATOR_SPECS as IDHM_SPECS
+from .pib import INDICATOR_SPECS as PIB_SPECS
+from .porte import INDICATOR_SPECS as PORTE_SPECS
+
+INDICATOR_SPECS = {
+    **ARRANJOS_URBANOS_SPECS,
+    **DESIGUALDADE_RENDA_SPECS,
+    **EMPREGO_SPECS,
+    **FINANCAS_PUBLICAS_SPECS,
+    **IDHM_SPECS,
+    **PIB_SPECS,
+    **PORTE_SPECS,
+}
+
+__all__ = ["INDICATOR_SPECS"]

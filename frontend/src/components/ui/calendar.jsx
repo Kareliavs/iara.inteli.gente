@@ -1,0 +1,2 @@
+// calendar component - stub
+export {};

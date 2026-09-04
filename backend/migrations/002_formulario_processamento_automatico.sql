@@ -1,0 +1,7 @@
+BEGIN;
+
+ALTER TABLE stg.formulario_submissao
+  ALTER COLUMN status SET DEFAULT 'APROVADA',
+  ALTER COLUMN validado_em SET DEFAULT NOW();
+
+COMMIT;

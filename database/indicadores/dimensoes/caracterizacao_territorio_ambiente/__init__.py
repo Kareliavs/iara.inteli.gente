@@ -1,0 +1,7 @@
+from .territorio import INDICATOR_SPECS as TERRITORIO_SPECS
+
+INDICATOR_SPECS = {
+    **TERRITORIO_SPECS,
+}
+
+__all__ = ["INDICATOR_SPECS"]

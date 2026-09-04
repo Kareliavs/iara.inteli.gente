@@ -1,0 +1,2 @@
+// command component - stub
+export {};

@@ -1,0 +1,7 @@
+from .inovacao import INDICATOR_SPECS as INOVACAO_SPECS
+
+INDICATOR_SPECS = {
+    **INOVACAO_SPECS,
+}
+
+__all__ = ["INDICATOR_SPECS"]

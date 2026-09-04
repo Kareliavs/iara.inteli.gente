@@ -1,0 +1,17 @@
+from .agua_esgoto import INDICATOR_SPECS as AGUA_ESGOTO_SPECS
+from .areas_verdes import INDICATOR_SPECS as AREAS_VERDES_SPECS
+from .energia import INDICATOR_SPECS as ENERGIA_SPECS
+from .gestao_desastres import INDICATOR_SPECS as GESTAO_DESASTRES_SPECS
+from .qualidade_ar import INDICATOR_SPECS as QUALIDADE_AR_SPECS
+from .residuos_solidos import INDICATOR_SPECS as RESIDUOS_SOLIDOS_SPECS
+
+INDICATOR_SPECS = {
+    **AGUA_ESGOTO_SPECS,
+    **AREAS_VERDES_SPECS,
+    **ENERGIA_SPECS,
+    **GESTAO_DESASTRES_SPECS,
+    **QUALIDADE_AR_SPECS,
+    **RESIDUOS_SOLIDOS_SPECS,
+}
+
+__all__ = ["INDICATOR_SPECS"]

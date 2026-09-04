@@ -1,0 +1,7 @@
+BEGIN;
+
+ALTER TABLE stg.formulario_submissao
+  ALTER COLUMN status SET DEFAULT 'PENDENTE',
+  ALTER COLUMN validado_em DROP DEFAULT;
+
+COMMIT;

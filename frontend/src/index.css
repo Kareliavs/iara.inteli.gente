@@ -1,0 +1,270 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 31%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 31%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 31%;
+
+    --primary: 197 76% 52%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 197 76% 52%;
+
+    --radius: 0.5rem;
+
+    /* Gov.br colors */
+    --gov-blue: 222 81% 39%;
+    --gov-blue-foreground: 0 0% 100%;
+
+    /* Brand colors */
+    --brand-cyan: 197 76% 52%;
+    --brand-green: 160 100% 30%;
+    --brand-navy: 224 36% 18%;
+    --brand-dark: 0 0% 31%;
+
+    /* Maturity level colors */
+    --level-1: 0 100% 31%;
+    --level-2: 7 76% 51%;
+    --level-3: 28 76% 55%;
+    --level-4: 206 55% 53%;
+    --level-5: 219 68% 36%;
+    --level-6: 96 100% 31%;
+    --level-7: 96 38% 24%;
+
+    /* Footer */
+    --footer-bg: 224 36% 18%;
+    --footer-foreground: 0 0% 100%;
+
+    /* Hero */
+    --hero-bg: 197 76% 52%;
+    --hero-foreground: 0 0% 100%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-family: 'Open Sans', sans-serif;
+  }
+}
+
+/* Hero gradient inspired by the reference layout */
+.city-search-hero-gradient {
+  background-image:
+    radial-gradient(circle at 52% 58%, rgba(72, 204, 247, 0.42) 0%, rgba(72, 204, 247, 0) 34%),
+    linear-gradient(120deg, #1f49b6 8%, #2370ce 46%, #31a9dc 100%);
+}
+
+body {
+  top: 0 !important;
+}
+
+.vlibras-widget-root {
+  --vlibras-panel-scale: 0.7;
+  --vlibras-panel-width: min(370px, calc(100vw - 24px));
+  --vlibras-panel-height: min(560px, calc(100vh - 32px));
+  --vlibras-panel-scaled-width: calc(var(--vlibras-panel-width) * var(--vlibras-panel-scale));
+  --vlibras-panel-scaled-height: calc(var(--vlibras-panel-height) * var(--vlibras-panel-scale));
+  display: block !important;
+  left: auto;
+  max-width: none !important;
+  position: fixed !important;
+  right: 0;
+  overflow: visible !important;
+  z-index: 120 !important;
+}
+
+.vlibras-widget-root:has([vw-access-button].active):not(.maximize) {
+  bottom: auto !important;
+  height: 52px !important;
+  left: auto !important;
+  margin: 0 !important;
+  right: 0 !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 52px !important;
+}
+
+.vlibras-widget-root.maximize {
+  transform: none !important;
+}
+
+.vlibras-widget-root:has([vw-plugin-wrapper].active):not(.maximize) {
+  height: var(--vlibras-panel-scaled-height) !important;
+  margin: 0 !important;
+  width: var(--vlibras-panel-scaled-width) !important;
+}
+
+.vlibras-widget-root:has([vw-plugin-wrapper].vlibras-has-tutorial-popup.active):not(.maximize) {
+  --vlibras-panel-width: min(460px, calc(100vw - 24px));
+}
+
+.vlibras-widget-root[vw] [vw-access-button] {
+  background: transparent !important;
+  border: 0 !important;
+  cursor: pointer !important;
+  display: block !important;
+  float: none !important;
+  height: 52px !important;
+  margin: 0 !important;
+  max-width: none !important;
+  opacity: 1 !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  position: relative !important;
+  right: auto !important;
+  top: auto !important;
+  width: 52px !important;
+}
+
+.vlibras-widget-root[vw] [vw-access-button]:not(.active) {
+  display: none !important;
+}
+
+.vlibras-widget-root[vw] [vw-access-button].active::after {
+  background: url("/access_icon.svg") center / 52px 52px no-repeat !important;
+  border-radius: 8px 0 0 8px !important;
+  content: "" !important;
+  display: block !important;
+  height: 52px !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  right: 0 !important;
+  top: 0 !important;
+  width: 52px !important;
+}
+
+.vlibras-widget-root[vw] [vw-access-button].active::before {
+  background: url("/access_popup.jpg") center / 180px 52px no-repeat !important;
+  border-radius: 8px !important;
+  content: "" !important;
+  display: block !important;
+  height: 52px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  right: 62px !important;
+  top: 0 !important;
+  transform: translateX(8px) !important;
+  transition: opacity 140ms ease, transform 180ms ease, visibility 140ms ease !important;
+  visibility: hidden !important;
+  width: 180px !important;
+}
+
+.vlibras-widget-root[vw] [vw-access-button].active:hover::before,
+.vlibras-widget-root[vw] [vw-access-button].active:focus-visible::before {
+  opacity: 1 !important;
+  transform: translateX(0) !important;
+  visibility: visible !important;
+}
+
+.vlibras-widget-root[vw]:has([vw-access-button] .access-button.left) [vw-access-button].active::after {
+  border-radius: 0 8px 8px 0 !important;
+  left: 0 !important;
+  right: auto !important;
+}
+
+.vlibras-widget-root[vw]:has([vw-access-button] .access-button.left) [vw-access-button].active::before {
+  left: 62px !important;
+  right: auto !important;
+  transform: translateX(-8px) !important;
+}
+
+.vlibras-widget-root[vw]:has([vw-access-button] .access-button.left) [vw-access-button].active:hover::before,
+.vlibras-widget-root[vw]:has([vw-access-button] .access-button.left) [vw-access-button].active:focus-visible::before {
+  transform: translateX(0) !important;
+}
+
+.vlibras-widget-root[vw] [vw-access-button] > * {
+  display: none !important;
+}
+
+.vlibras-widget-root[vw] [vw-plugin-wrapper] {  
+  float: none !important;
+  max-width: calc(100vw - 24px) !important;
+  overflow: visible !important;
+  z-index: 130 !important;
+}
+
+.vlibras-widget-root[vw] [vw-plugin-wrapper].active {
+  bottom: auto !important;
+  display: flex !important;
+  height: var(--vlibras-panel-height) !important;
+  left: 0 !important;
+  max-height: var(--vlibras-panel-height) !important;
+  min-height: 0 !important;
+  right: auto !important;
+  top: 0 !important;
+  transform: scale(var(--vlibras-panel-scale)) !important;
+  transform-origin: top left !important;
+  width: var(--vlibras-panel-width) !important;
+}
+
+.vlibras-widget-root[vw] [vw-plugin-wrapper].vlibras-has-tutorial-popup.active {
+  overflow: visible !important;
+  transform: scale(var(--vlibras-panel-scale)) !important;
+  transform-origin: top left !important;
+  width: var(--vlibras-panel-width) !important;
+}
+
+.vlibras-widget-root[vw] [vw-plugin-wrapper] .vlibras-tutorial-container {
+  left: 50% !important;
+  max-width: calc(100vw - 24px) !important;
+  overflow: visible !important;
+  position: absolute !important;
+  right: auto !important;
+  top: 0 !important;
+  transform: translateX(-50%) !important;
+  width: min(440px, calc(100vw - 24px)) !important;
+  z-index: 140 !important;
+}
+
+.vlibras-widget-root[vw] [vw-plugin-wrapper] .vlibras-tutorial-popup {
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  overflow: visible !important;
+  width: 100% !important;
+}
+
+.vlibras-widget-root[vw] [vw-plugin-wrapper] .vlibras-tutorial-popup button,
+.vlibras-widget-root[vw] [vw-plugin-wrapper] .vlibras-tutorial-popup a,
+.vlibras-widget-root[vw] [vw-plugin-wrapper] .vlibras-tutorial-popup [role="button"] {
+  pointer-events: auto !important;
+}
