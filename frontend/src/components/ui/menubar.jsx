@@ -1,2 +1,0 @@
-// menubar component - stub
-export {};

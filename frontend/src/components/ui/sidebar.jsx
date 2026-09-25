@@ -1,2 +1,0 @@
-// sidebar component - stub
-export {};

@@ -6,16 +6,16 @@ from indicadores.core.types import Number
 def calcular(ind: Number) -> int:
     if ind < 0:
         return 0
-    if ind <= 20:
+    if ind <= 0.020:
         return 1
-    if ind <= 50:
+    if ind <= 0.050:
         return 2
-    if ind <= 62:
+    if ind <= 0.062:
         return 3
-    if ind <= 75:
+    if ind <= 0.075:
         return 4
-    if ind <= 85:
+    if ind <= 0.085:
         return 5
-    if ind <= 99:
+    if ind <= 0.099:
         return 6
     return 7

@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, CheckCircle2, LoaderCircle } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { saveCityHallAuth } from "@/lib/cityHallAuth";
 
 const CityHallConfirmAccount = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [token] = useState(() => new URLSearchParams(window.location.search).get("token") || "");
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("Confirmando seu e-mail…");
 
   useEffect(() => {
-    const token = searchParams.get("token") || "";
+    if (token) {
+      window.history.replaceState(window.history.state, "", window.location.pathname);
+    }
     if (!token) {
       setStatus("error");
       setMessage("O link de confirmação está incompleto.");
@@ -44,7 +46,7 @@ const CityHallConfirmAccount = () => {
 
     confirmAccount();
     return () => controller.abort();
-  }, [searchParams]);
+  }, [token]);
 
   return (
     <section className="flex min-h-[620px] items-center justify-center bg-[#f6f9fe] px-6 py-16">

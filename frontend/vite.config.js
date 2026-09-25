@@ -4,6 +4,9 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 
 export default defineConfig(({ mode }) => ({
+  // Relative base so the build works when hosted at any subpath (GitHub
+  // Pages project sites are served from /<repo-name>/, not /).
+  base: "./",
   server: {
     host: "::",
     port: 8080,

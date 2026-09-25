@@ -1,2 +1,0 @@
-// pagination component - stub
-export {};

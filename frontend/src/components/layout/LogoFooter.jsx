@@ -31,15 +31,12 @@ const LogoFooter = () => {
             Apoio
           </h2>
 
-          <div className="grid w-full max-w-2xl grid-cols-1 justify-items-center gap-x-8 gap-y-4 min-[480px]:grid-cols-3">
+          <div className="grid w-full max-w-2xl grid-cols-1 justify-items-center gap-x-8 gap-y-4 min-[480px]:grid-cols-2">
             <div className="flex h-9 w-full max-w-[150px] items-center justify-center opacity-65">
               <img src="/logo_rnp.png" alt="logo RNP" className="max-h-7 max-w-full object-contain" />
             </div>
             <div className="flex h-9 w-full max-w-[150px] items-center justify-center opacity-65">
               <img src="/logo_ctira.png" alt="logo CTIRA" className="max-h-7 max-w-full object-contain" />
-            </div>
-            <div className="flex h-9 w-full max-w-[150px] items-center justify-center opacity-65">
-              <img src="/logo_mcti.png" alt="logo MCTI" className="max-h-7 max-w-full object-contain" />
             </div>
           </div>
         </section>

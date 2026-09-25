@@ -6,6 +6,8 @@ import {
   useMemo,
   useState,
 } from "react";
+import supplementalTranslations from "./i18nSupplemental.json";
+import uiSupplementalTranslations from "./i18nUiSupplemental.js";
 
 export const LANGUAGES = [
   { code: "pt", label: "Português", country: "br", htmlLang: "pt-BR" },
@@ -19,6 +21,8 @@ export const LANGUAGE_STORAGE_KEY = "inteligente:language";
 const SUPPORTED_CODES = new Set(LANGUAGES.map((language) => language.code));
 const textSources = new WeakMap();
 const ATTRIBUTE_NAMES = ["placeholder", "aria-label", "title", "alt"];
+const DOCUMENT_DESCRIPTION =
+  "Plataforma de análise do nível de maturidade dos municípios brasileiros.";
 
 const indicatorNameTranslations = {
   en: {
@@ -2165,6 +2169,8 @@ const translations = {
     ...indicatorNameTranslations.en,
     ...buildIndicatorDescriptionTranslations("en"),
     ...pageTextTranslations.en,
+    ...supplementalTranslations.en,
+    ...uiSupplementalTranslations.en,
   },
   fr: {
     ...buildTermTranslations(indicatorNameTranslations.en, "fr"),
@@ -2434,6 +2440,8 @@ const translations = {
     ...indicatorValueTranslations.fr,
     ...buildIndicatorDescriptionTranslations("fr"),
     ...pageTextTranslations.fr,
+    ...supplementalTranslations.fr,
+    ...uiSupplementalTranslations.fr,
   },
   es: {
     "Metodologias": "Metodologías",
@@ -2694,6 +2702,8 @@ const translations = {
     ...indicatorNameTranslations.es,
     ...buildIndicatorDescriptionTranslations("es"),
     ...pageTextTranslations.es,
+    ...supplementalTranslations.es,
+    ...uiSupplementalTranslations.es,
   },
 };
 
@@ -2743,6 +2753,12 @@ export const translateString = (value, language) => {
 
   if (dictionary[key]) return `${leading}${dictionary[key]}${trailing}`;
 
+  const respondentMapMatch = key.match(/^(.*?) — municípios respondentes$/);
+  if (respondentMapMatch) {
+    const translatedTitle = translateString(respondentMapMatch[1], language);
+    return `${leading}${translatedTitle} — ${dictionary["municípios respondentes"]}${trailing}`;
+  }
+
   if (key.includes("; ")) {
     const translatedItems = key
       .split(";")
@@ -2769,14 +2785,6 @@ export const translateString = (value, language) => {
     return `${leading}Caracterización ${title}${trailing}`;
   }
 
-  const regionMatch = key.match(/^Região (.+)$/);
-  if (regionMatch) {
-    const translatedRegion = regionTranslations[language]?.[regionMatch[1]] || regionMatch[1];
-    if (language === "en") return `${leading}${translatedRegion} Region${trailing}`;
-    if (language === "fr") return `${leading}Région ${translatedRegion}${trailing}`;
-    return `${leading}Región ${translatedRegion}${trailing}`;
-  }
-
   const selectedRegionMatch = key.match(/^Região - (.+)$/);
   if (selectedRegionMatch) {
     const translatedRegion =
@@ -2784,6 +2792,14 @@ export const translateString = (value, language) => {
     if (language === "en") return `${leading}Region - ${translatedRegion}${trailing}`;
     if (language === "fr") return `${leading}Région - ${translatedRegion}${trailing}`;
     return `${leading}Región - ${translatedRegion}${trailing}`;
+  }
+
+  const regionMatch = key.match(/^Região (.+)$/);
+  if (regionMatch) {
+    const translatedRegion = regionTranslations[language]?.[regionMatch[1]] || regionMatch[1];
+    if (language === "en") return `${leading}${translatedRegion} Region${trailing}`;
+    if (language === "fr") return `${leading}Région ${translatedRegion}${trailing}`;
+    return `${leading}Región ${translatedRegion}${trailing}`;
   }
 
   const stateMatch = key.match(/^Estado - (.+)$/);
@@ -2948,6 +2964,12 @@ export const I18nProvider = ({ children }) => {
   useLayoutEffect(() => {
     const root = document.getElementById("root");
     document.documentElement.lang = getLanguageConfig(language).htmlLang;
+    const localizedDescription = translateString(DOCUMENT_DESCRIPTION, language);
+    document
+      .querySelectorAll(
+        'meta[name="description"], meta[property="og:description"], meta[name="twitter:description"]',
+      )
+      .forEach((meta) => meta.setAttribute("content", localizedDescription));
     applyTranslations(root, language);
 
     const observer = new MutationObserver(() => {

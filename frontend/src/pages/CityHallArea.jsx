@@ -12,12 +12,16 @@ import {
 import { useNavigate } from "react-router-dom";
 import { getCityHallHomePath, saveCityHallAuth } from "@/lib/cityHallAuth";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useI18n } from "@/lib/i18n";
 
 const emailPattern = /^\S+@\S+\.\S+$/;
 const municipalEmailPattern = /^[a-z0-9](?:[a-z0-9._%+-]{0,62}[a-z0-9])?@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.(?:ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to)\.gov\.br$/i;
+const allowPersonalEmailRegistration =
+  import.meta.env.VITE_ALLOW_PERSONAL_EMAIL_REGISTRATION === "true";
 
 const CityHallArea = () => {
   const navigate = useNavigate();
+  const { language } = useI18n();
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState(
     () =>
@@ -75,6 +79,7 @@ const CityHallArea = () => {
           login: email.trim(),
           senha: password,
           lembrar: rememberAccess,
+          language,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -100,9 +105,15 @@ const CityHallArea = () => {
       errors.name = "O nome deve possuir pelo menos 3 caracteres.";
     }
     if (!registration.email.trim()) {
-      errors.email = "Informe seu e-mail institucional.";
-    } else if (!municipalEmailPattern.test(registration.email.trim())) {
-      errors.email = "Use o formato usuario@cidade.estado.gov.br.";
+      errors.email = "Informe seu e-mail.";
+    } else if (
+      !(allowPersonalEmailRegistration ? emailPattern : municipalEmailPattern).test(
+        registration.email.trim(),
+      )
+    ) {
+      errors.email = allowPersonalEmailRegistration
+        ? "Informe um endereço de e-mail válido."
+        : "Use o formato usuario@cidade.estado.gov.br.";
     }
     if (!registration.password) {
       errors.password = "Informe uma senha.";
@@ -130,6 +141,7 @@ const CityHallArea = () => {
           nome: registration.name.trim(),
           email: registration.email.trim(),
           senha: registration.password,
+          language,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -156,11 +168,19 @@ const CityHallArea = () => {
     setRecoveryError("");
 
     if (!recoveryEmail.trim()) {
-      setRecoveryError("Informe seu e-mail institucional.");
+      setRecoveryError("Informe seu e-mail.");
       return;
     }
-    if (!municipalEmailPattern.test(recoveryEmail.trim())) {
-      setRecoveryError("Use o formato usuario@cidade.estado.gov.br.");
+    if (
+      !(allowPersonalEmailRegistration ? emailPattern : municipalEmailPattern).test(
+        recoveryEmail.trim(),
+      )
+    ) {
+      setRecoveryError(
+        allowPersonalEmailRegistration
+          ? "Informe um endereço de e-mail válido."
+          : "Use o formato usuario@cidade.estado.gov.br.",
+      );
       return;
     }
 
@@ -170,7 +190,7 @@ const CityHallArea = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email: recoveryEmail.trim() }),
+        body: JSON.stringify({ email: recoveryEmail.trim(), language }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -192,7 +212,7 @@ const CityHallArea = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email: confirmationEmail }),
+        body: JSON.stringify({ email: confirmationEmail, language }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -343,7 +363,7 @@ const CityHallArea = () => {
                       Confira seu e-mail
                     </h3>
                     <p className="mt-3 text-sm leading-relaxed text-[#6b788c]">
-                      Enviamos um link de confirmação para
+                      O link de confirmação será enviado para
                       <span className="block font-bold text-[#405169]">{confirmationEmail}</span>
                     </p>
                     <p className="mt-3 text-xs leading-relaxed text-[#7a8799]">
@@ -397,11 +417,19 @@ const CityHallArea = () => {
                     value={registration.email}
                     onChange={(value) => updateRegistration("email", value)}
                     autoComplete="email"
-                    placeholder="nome@municipio.estado.gov.br"
+                    placeholder={
+                      allowPersonalEmailRegistration
+                        ? "nome@exemplo.com"
+                        : "nome@municipio.estado.gov.br"
+                    }
                     icon={Mail}
                     className="mt-5"
                     error={registrationErrors.email}
-                    labelHint="O município será identificado automaticamente pelo domínio do e-mail."
+                    labelHint={
+                      allowPersonalEmailRegistration
+                        ? "Modo de teste: e-mails pessoais estão temporariamente liberados."
+                        : "O município será identificado automaticamente pelo domínio do e-mail."
+                    }
                   />
 
                   <PasswordField

@@ -7,243 +7,168 @@ const defaultProps = {
   cityName: "São Carlos",
   dimensionCode: "economica",
   dimensionTitle: "Econômica",
+  indicatorIds: [1001, 1002],
   language: "pt",
 };
 
 const successfulResponse = {
-  resposta: "O município apresenta nível intermediário nesta dimensão.",
+  resposta: "São Carlos foi comparado com 1 município semelhante, com os resultados separados por dimensão.",
   municipio: { nome: "São Carlos", codigo_ibge: 3548906, uf: "SP" },
-  indicadores_utilizados: ["3025", "4056"],
-  anos_utilizados: [2022, 2023],
-  fontes: [
-    { titulo: "Metodologia do indicador 3025", referencia: "Documento metodológico" },
-    { titulo: "IBGE", referencia: "https://www.ibge.gov.br/" },
-  ],
-  limitacoes: ["O ano de referência varia entre os indicadores."],
+  indicadores_utilizados: [],
+  anos_utilizados: [],
+  fontes: [],
+  limitacoes: [],
+  dados: {
+    tipo: "comparar_municipios",
+    secoes: [
+      {
+        codigo: "economica",
+        titulo: "Dimensão Econômica",
+        itens: [
+          { municipio_cod_ibge: 3548906, municipio_nome: "São Carlos", estado_sigla: "SP", pontuacao: 64, atual: true },
+          { municipio_cod_ibge: 3509502, municipio_nome: "Campinas", estado_sigla: "SP", pontuacao: 71, atual: false },
+        ],
+      },
+      { codigo: "sociocultural", titulo: "Dimensão Sociocultural", itens: [{ municipio_cod_ibge: 3548906, municipio_nome: "São Carlos", estado_sigla: "SP", pontuacao: 57, atual: true }] },
+      { codigo: "meio_ambiente", titulo: "Dimensão Meio Ambiente", itens: [{ municipio_cod_ibge: 3548906, municipio_nome: "São Carlos", estado_sigla: "SP", pontuacao: 43, atual: true }] },
+    ],
+  },
 };
 
-const mockJsonResponse = (data, ok = true) => ({
-  ok,
-  json: vi.fn().mockResolvedValue(data),
-});
-
-const openAssistant = (language = "pt") => {
-  fireEvent.click(
-    screen.getByRole("button", {
-      name: language === "en" ? "Open municipal assistant" : "Abrir assistente municipal",
-    })
-  );
+const challengesResponse = {
+  ...successfulResponse,
+  resposta: "Desafios e oportunidades para a transformação digital de São Carlos.",
+  dados: {
+    tipo: "desafios_oportunidades_transformacao_digital",
+    secoes: [
+      { codigo: "economica", titulo: "Dimensão Econômica", itens: [{ id: "3049", nome: "Transporte inteligente", nivel: 1 }] },
+      { codigo: "sociocultural", titulo: "Dimensão Sociocultural", itens: [{ id: "3003", nome: "Educação digital", nivel: 2 }] },
+      { codigo: "meio_ambiente", titulo: "Dimensão Meio Ambiente", itens: [{ id: "3024", nome: "Saneamento", nivel: 3 }] },
+    ],
+  },
 };
+
+const mockJsonResponse = (data, ok = true) => ({ ok, json: vi.fn().mockResolvedValue(data) });
+
+const openAssistant = (language = "pt") => fireEvent.click(screen.getByRole("button", {
+  name: language === "en" ? "Open municipal assistant" : "Abrir assistente municipal",
+}));
 
 describe("MunicipalAssistant", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", vi.fn());
-  });
+  beforeEach(() => vi.stubGlobal("fetch", vi.fn()));
+  afterEach(() => vi.unstubAllGlobals());
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("shows only the floating trigger until the centered assistant is opened", () => {
+  it("mantém o ícone flutuante e abre o modal centralizado", () => {
     render(<MunicipalAssistant {...defaultProps} />);
-
     expect(screen.getByRole("button", { name: "Abrir assistente municipal" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-
     openAssistant();
-
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Assistente municipal" })).toBeInTheDocument();
-
+    expect(screen.getByText("Dados oficiais")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Fechar assistente municipal" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("fills the question from a suggestion without sending it", () => {
-    render(<MunicipalAssistant {...defaultProps} />);
-    openAssistant();
+  it("ofusca o assistente e direciona municípios não respondentes para a Área da Prefeitura", () => {
+    render(<MunicipalAssistant {...defaultProps} isAvailable={false} />);
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Como este município se compara a municípios semelhantes?",
-      })
-    );
+    const trigger = screen.getByRole("button", { name: "Assistente municipal indisponível" });
+    expect(trigger).toHaveClass("opacity-60", "grayscale");
+    fireEvent.click(trigger);
 
-    expect(screen.getByLabelText("Sua pergunta")).toHaveValue(
-      "Como este município se compara a municípios semelhantes?"
-    );
+    expect(screen.getByText(/somente para municípios que responderam ao formulário/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ir para a Área da Prefeitura" })).toHaveAttribute("href", "/prefeitura");
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("does not enable submission below the API minimum length", () => {
-    render(<MunicipalAssistant {...defaultProps} />);
-    openAssistant();
-
-    fireEvent.change(screen.getByLabelText("Sua pergunta"), {
-      target: { value: "Oi" },
-    });
-
-    expect(screen.getByRole("button", { name: "Perguntar" })).toBeDisabled();
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it("localizes the interface and sends the canonical language in English", async () => {
-    fetch.mockResolvedValue(mockJsonResponse(successfulResponse));
-    render(<MunicipalAssistant {...defaultProps} language="en" />);
-    openAssistant("en");
-
-    expect(screen.getByRole("heading", { name: "Municipal assistant" })).toBeInTheDocument();
-    expect(screen.getByText("Experimental AI")).toBeInTheDocument();
-    expect(
-      screen.getByText("Ask about the indicators for São Carlos in the Economic dimension.")
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Suggested questions" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "Explain the methodology for the indicators in the Economic dimension.",
-      })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Do not include personal data or sensitive information in your question.")
-    ).toBeInTheDocument();
-
-    const question = screen.getByLabelText("Your question");
-    expect(question).toHaveAttribute(
-      "placeholder",
-      "E.g.: How does this municipality compare with similar municipalities?"
-    );
-    fireEvent.change(question, { target: { value: "Explain these results." } });
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-
-    expect(await screen.findByRole("heading", { name: "Answer" })).toBeInTheDocument();
-    expect(screen.getByText("Indicators used")).toBeInTheDocument();
-    expect(screen.getByText("Years used")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Sources" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Limitations" })).toBeInTheDocument();
-    expect(screen.getByText(successfulResponse.resposta)).toBeInTheDocument();
-    expect(JSON.parse(fetch.mock.calls[0][1].body).contexto.idioma).toBe("en");
-  });
-
-  it("sends the canonical municipality context and renders the structured response", async () => {
+  it("mostra as duas perguntas possíveis e envia a comparação de municípios", async () => {
     fetch.mockResolvedValue(mockJsonResponse(successfulResponse));
     render(<MunicipalAssistant {...defaultProps} />);
     openAssistant();
 
-    fireEvent.change(screen.getByLabelText("Sua pergunta"), {
-      target: { value: "  Quais são os resultados?  " },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Perguntar" }));
+    expect(screen.getByRole("button", { name: "Desafios e Oportunidades para Transformação Digital" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Qual é o resumo da dimensão selecionada?" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Quais são os melhores indicadores?" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Como este município se compara à média regional?" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Como este município se compara a municípios semelhantes?" }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     const [url, options] = fetch.mock.calls[0];
-
-    expect(url).toBe("/api/assistente/perguntar");
-    expect(options).toEqual(
-      expect.objectContaining({
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: expect.any(AbortSignal),
-      })
-    );
+    expect(url).toBe("/api/assistente/consultar");
+    expect(options.credentials).toBe("omit");
     expect(JSON.parse(options.body)).toEqual({
-      pergunta: "Quais são os resultados?",
+      acao: "comparar_municipios",
       contexto: {
         municipio_cod_ibge: 3548906,
         dimensao_codigo: "economica",
         idioma: "pt",
+        indicador_ids: [1001, 1002],
       },
     });
-
     expect(await screen.findByText(successfulResponse.resposta)).toBeInTheDocument();
-    expect(screen.getByText("3025")).toBeInTheDocument();
-    expect(screen.getByText("2023")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "IBGE" })).toHaveAttribute(
-      "href",
-      "https://www.ibge.gov.br/"
-    );
-    expect(screen.getByText(successfulResponse.limitacoes[0])).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Dimensão Econômica" })).toBeInTheDocument();
+    expect(screen.getByText("Campinas/SP").closest("li")).toHaveTextContent("71 pontos");
+    expect(screen.getAllByText("Município selecionado")).toHaveLength(3);
+    expect(screen.queryByText("Indicadores utilizados")).not.toBeInTheDocument();
+    expect(screen.queryByText("Anos utilizados")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Fontes" })).not.toBeInTheDocument();
   });
 
-  it("sends a null dimension when the page is in the municipal overview", async () => {
-    fetch.mockResolvedValue(mockJsonResponse(successfulResponse));
-    render(
-      <MunicipalAssistant
-        {...defaultProps}
-        dimensionCode={null}
-        dimensionTitle={null}
-      />
-    );
+  it("mantém as duas perguntas habilitadas sem dimensão selecionada", () => {
+    render(<MunicipalAssistant {...defaultProps} dimensionCode={null} dimensionTitle={null} indicatorIds={[]} />);
     openAssistant();
+    expect(screen.getByRole("button", { name: "Como este município se compara a municípios semelhantes?" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Desafios e Oportunidades para Transformação Digital" })).toBeEnabled();
+  });
 
-    fireEvent.change(screen.getByLabelText("Sua pergunta"), {
-      target: { value: "Faça um diagnóstico geral." },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Perguntar" }));
-
+  it("localiza a interface e envia o idioma canônico", async () => {
+    fetch.mockResolvedValue(mockJsonResponse(successfulResponse));
+    render(<MunicipalAssistant {...defaultProps} language="en" />);
+    openAssistant("en");
+    expect(screen.getByText("Official data")).toBeInTheDocument();
+    expect(screen.getAllByText(/without generative AI/i)).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "How does this municipality compare with similar municipalities?" }));
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-    expect(JSON.parse(fetch.mock.calls[0][1].body).contexto).toEqual({
-      municipio_cod_ibge: 3548906,
-      dimensao_codigo: null,
-      idioma: "pt",
-    });
+    expect(JSON.parse(fetch.mock.calls[0][1].body).contexto.idioma).toBe("en");
   });
 
-  it("shows the backend error and makes it available as an alert", async () => {
-    fetch.mockResolvedValue(
-      mockJsonResponse({ error: "O serviço de IA está indisponível." }, false)
-    );
-    render(<MunicipalAssistant {...defaultProps} language="en" />);
-    openAssistant("en");
-
-    fireEvent.change(screen.getByLabelText("Your question"), {
-      target: { value: "Explain this result." },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "O serviço de IA está indisponível."
-    );
+  it("exibe erro do backend como alerta", async () => {
+    fetch.mockResolvedValue(mockJsonResponse({ error: "Consulta indisponível." }, false));
+    render(<MunicipalAssistant {...defaultProps} />);
+    openAssistant();
+    fireEvent.click(screen.getByRole("button", { name: "Desafios e Oportunidades para Transformação Digital" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Consulta indisponível.");
   });
 
-  it("disables submission while a request is in progress", async () => {
-    fetch.mockImplementation(() => new Promise(() => {}));
-    render(<MunicipalAssistant {...defaultProps} language="en" />);
-    openAssistant("en");
+  it("renderiza os desafios em três seções sem metadados e fontes", async () => {
+    fetch.mockResolvedValue(mockJsonResponse(challengesResponse));
+    render(<MunicipalAssistant {...defaultProps} />);
+    openAssistant();
+    fireEvent.click(screen.getByRole("button", { name: "Desafios e Oportunidades para Transformação Digital" }));
 
-    fireEvent.change(screen.getByLabelText("Your question"), {
-      target: { value: "Compare the indicators." },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Analyzing the data and methodology..."
-    );
-    expect(screen.getByRole("button", { name: "Consulting..." })).toBeDisabled();
-    expect(screen.getByLabelText("Your question")).toBeDisabled();
+    expect(await screen.findByRole("heading", { name: "Dimensão Econômica" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Dimensão Sociocultural" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Dimensão Meio Ambiente" })).toBeInTheDocument();
+    const transportItem = screen.getByText(/Transporte inteligente/).closest("li");
+    expect(transportItem).toHaveTextContent("Nível Fundação");
+    expect(transportItem).not.toHaveTextContent("nível 1/7");
+    expect(transportItem).not.toHaveTextContent("3049");
+    expect(screen.getByText(/Educação digital/).closest("li")).toHaveTextContent("Nível Engajamento");
+    expect(screen.getByText(/Saneamento/).closest("li")).toHaveTextContent("Nível 1");
+    expect(screen.queryByText("Indicadores utilizados")).not.toBeInTheDocument();
+    expect(screen.queryByText("Anos utilizados")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Fontes" })).not.toBeInTheDocument();
+    expect(JSON.parse(fetch.mock.calls[0][1].body).acao).toBe("desafios_oportunidades_transformacao_digital");
   });
 
-  it("clears the question and response when the municipality context changes", async () => {
+  it("limpa a resposta quando o município muda", async () => {
     fetch.mockResolvedValue(mockJsonResponse(successfulResponse));
     const { rerender } = render(<MunicipalAssistant {...defaultProps} />);
     openAssistant();
-
-    fireEvent.change(screen.getByLabelText("Sua pergunta"), {
-      target: { value: "Mostre o diagnóstico." },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Perguntar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Como este município se compara a municípios semelhantes?" }));
     expect(await screen.findByText(successfulResponse.resposta)).toBeInTheDocument();
-
-    rerender(
-      <MunicipalAssistant
-        {...defaultProps}
-        municipioCodIbge={3550308}
-        cityName="São Paulo"
-      />
-    );
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Sua pergunta")).toHaveValue("");
-      expect(screen.queryByText(successfulResponse.resposta)).not.toBeInTheDocument();
-    });
+    rerender(<MunicipalAssistant {...defaultProps} municipioCodIbge={3550308} cityName="São Paulo" />);
+    await waitFor(() => expect(screen.queryByText(successfulResponse.resposta)).not.toBeInTheDocument());
   });
 });

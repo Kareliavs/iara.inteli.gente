@@ -14,8 +14,15 @@ import { MOCK_CITY } from "@/data/mockData";
 import IndicatorsTable from "@/components/city/IndicatorsTable";
 import MunicipalityMap from "@/components/city/MunicipalityMap";
 import MunicipalAssistant from "@/components/city/MunicipalAssistant";
-import { AI_ASSISTANT_ENABLED } from "@/config/featureFlags";
 import { useI18n } from "@/lib/i18n";
+import {
+  ECONOMIC_TOPIC_GROUPS,
+  SOCIOCULTURAL_TOPIC_GROUPS,
+  ENVIRONMENT_TOPIC_GROUPS,
+  INSTITUTIONAL_TOPIC_GROUPS,
+  DIMENSION_TOPIC_GROUPS,
+  DIMENSION_INDICATOR_REFS,
+} from "@/lib/dimensionIndicatorRefs";
 
 const toDisplayName = (name) =>
   (name || "")
@@ -198,6 +205,12 @@ export const hasUnansweredFormIndicators = (indicatorsById) =>
       indicatorsById?.[indicatorId]?.indicador_valor_textual
     )
   );
+
+export const hasAnsweredFormIndicators = (indicatorsById) =>
+  Array.from(INDICADOR_VALOR_TEXTUAL_IDS).some((indicatorId) => {
+    const value = indicatorsById?.[indicatorId]?.indicador_valor_textual;
+    return typeof value === "string" && value.trim() !== "" && !isUnansweredFormValue(value);
+  });
 
 const formatNumericIndicatorFallback = (indicator, formatter = formatNumber) => {
   const value = indicator?.indicador;
@@ -482,64 +495,8 @@ const INFLUENCE_NETWORK_LABELS = {
   11: "Centro Local",
 };
 
-const ECONOMIC_TOPIC_GROUPS = [
-  { topic: "Agua e Esgoto", ids: [3117, 3127, 3141, 3148] },
-  { topic: "Infraestrutura de conectividade", ids: [3021, 3022, 3040, 3041, 3134, 4035, 4036, 4065] },
-  { topic: "Habitacao", ids: [3020, 4041, 4045] },
-  { topic: "Transporte", ids: [3049, 3076, 3124, 4011, 4012, 4031, 4046] },
-  { topic: "Inovacao", ids: [4024, 4025, 4032, 4033] },
-  { topic: "Servicos On-line da Prefeitura", ids: [3004, 4066] },
-  { topic: "Sistemas e Tecnologia para Gestao Urbana", ids: [3016, 4010] },
-  { topic: "Resíduos Sólidos", ids: [3122] },
-  { topic: "Urbanização das Vias Públicas", ids: [3139, 3145, 4005] },
-  { topic: "Dados Abertos", ids: [3033] },
-];
-
-const SOCIOCULTURAL_TOPIC_GROUPS = [
-  { topic: "Educa\u00e7\u00e3o", ids: [3003, 3011, 3085, 3086, 3115, 4006, 4020, 4034, 4037, 4048] },
-  { topic: "Cultura", ids: [3077, 3107, 3123, 4040] },
-  { topic: "Sa\u00fade", ids: [3006, 3095, 3096, 3125, 4004, 4021, 4049, 4067] },
-  { topic: "Seguran\u00e7a P\u00fablica", ids: [3048, 4016, 4017] },
-  { topic: "Gest\u00e3o de Desastres", ids: [3007, 4042, 4068, 4069] },
-  { topic: "Inclus\u00e3o Digital", ids: [3037, 3039] },
-  { topic: "Inclus\u00e3o Social", ids: [4039, 4043, 4044] },
-  { topic: "Participa\u00e7\u00e3o P\u00fablica", ids: [3103, 3147] },
-];
-
-const ENVIRONMENT_TOPIC_GROUPS = [
-  { topic: "\u00c1gua e Esgoto", ids: [3024, 3028, 3042, 3110, 3128, 4047, 4071] },
-  { topic: "Res\u00edduos S\u00f3lidos", ids: [4007, 4014] },
-  { topic: "\u00c1reas Verdes", ids: [3057, 4030] },
-  { topic: "Qualidade do Ar", ids: [3056, 3113] },
-  { topic: "Energia", ids: [3043, 3069] },
-  { topic: "Gest\u00e3o de Desastres", ids: [4070] },
-];
-
-const INSTITUTIONAL_TOPIC_GROUPS = [
-  { topic: "Estrat\u00e9gia", ids: [6003, 6005, 6006] },
-  { topic: "Infraestrutura de Hw e Sw", ids: [6021, 6024] },
-  { topic: "Servi\u00e7os e Aplica\u00e7\u00f5es", ids: [6044, 6048, 6056] },
-  { topic: "Monitoramento", ids: [6009, 6054, 6055] },
-  { topic: "Dados Abertos", ids: [6035, 6037, 6038] },
-];
-
-const DIMENSION_TOPIC_GROUPS = {
-  economica: ECONOMIC_TOPIC_GROUPS,
-  meio_ambiente: ENVIRONMENT_TOPIC_GROUPS,
-  sociocultural: SOCIOCULTURAL_TOPIC_GROUPS,
-  capacidades_institucionais: INSTITUTIONAL_TOPIC_GROUPS,
-};
-
-const buildDimensionIndicatorRefs = (topicGroups) =>
-  Array.from(new Set(topicGroups.flatMap(({ ids }) => ids)));
-
-const DIMENSION_INDICATOR_REFS = {
-  d1: [3025, 4056, 4057, 4058, 4059],
-  economica: buildDimensionIndicatorRefs(ECONOMIC_TOPIC_GROUPS),
-  meio_ambiente: buildDimensionIndicatorRefs(ENVIRONMENT_TOPIC_GROUPS),
-  sociocultural: buildDimensionIndicatorRefs(SOCIOCULTURAL_TOPIC_GROUPS),
-  capacidades_institucionais: buildDimensionIndicatorRefs(INSTITUTIONAL_TOPIC_GROUPS),
-};
+// (moved to src/lib/dimensionIndicatorRefs.js so the static-mode fetch shim
+// can share the exact same fixed indicator sets)
 
 const MAIN_DIMENSION_CODES = [
   "economica",
@@ -720,6 +677,7 @@ const CitySearchDetails = () => {
   const [detailsView, setDetailsView] = useState("indices");
   const [selectedCharacterization, setSelectedCharacterization] = useState("sociodemografica");
   const [indicatorsById, setIndicatorsById] = useState({});
+  const [indicatorsLoading, setIndicatorsLoading] = useState(true);
   const [indicadorDesigualdadeRendaGini, setIndicadorDesigualdadeRendaGini] = useState(null);
   const [indicadorPibAg, setIndicadorPibAg] = useState(null);
   const [indicadorPibInd, setIndicadorPibInd] = useState(null);
@@ -773,10 +731,13 @@ const CitySearchDetails = () => {
 
     if (!municipioCodIbge) {
       clearIndicatorState();
+      setIndicatorsLoading(false);
       return;
     }
 
     let cancelled = false;
+    setIndicatorsLoading(true);
+    clearIndicatorState();
 
     fetch(`/api/municipios/${municipioCodIbge}/indicadores`)
       .then((res) => {
@@ -802,6 +763,9 @@ const CitySearchDetails = () => {
         if (cancelled) return;
         console.error("Erro ao buscar indicadores do municipio:", err);
         clearIndicatorState();
+      })
+      .finally(() => {
+        if (!cancelled) setIndicatorsLoading(false);
       });
 
     return () => {
@@ -1604,6 +1568,7 @@ const CitySearchDetails = () => {
       })
     : "N/D";
   const hasUnansweredForm = hasUnansweredFormIndicators(indicatorsById);
+  const hasAnsweredForm = hasAnsweredFormIndicators(indicatorsById);
 
   return (
     <div>
@@ -1799,13 +1764,15 @@ const CitySearchDetails = () => {
             )}
           </div>
 
-          {AI_ASSISTANT_ENABLED && (
+          {!indicatorsLoading && (
             <MunicipalAssistant
               municipioCodIbge={city.codIbge}
               cityName={displayCityName}
               dimensionCode={selectedDimension}
               dimensionTitle={currentDim?.title || null}
+              indicatorIds={selectedDimension ? DIMENSION_INDICATOR_REFS[selectedDimension] || [] : []}
               language={language}
+              isAvailable={hasAnsweredForm}
             />
           )}
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getDashboardHighlights,
+  hasAnsweredFormIndicators,
   hasUnansweredFormIndicators,
 } from "./CitySearchDetails";
 
@@ -93,5 +94,14 @@ describe("hasUnansweredFormIndicators", () => {
     delete indicators[3049];
 
     expect(hasUnansweredFormIndicators(indicators)).toBe(false);
+  });
+
+  it("only grants assistant access when at least one form indicator has an answer", () => {
+    expect(hasAnsweredFormIndicators(buildIndicators())).toBe(false);
+    expect(hasAnsweredFormIndicators({})).toBe(false);
+
+    const indicators = buildIndicators();
+    indicators[3049].indicador_valor_textual = "Sim";
+    expect(hasAnsweredFormIndicators(indicators)).toBe(true);
   });
 });

@@ -17,10 +17,46 @@ const topics = [
     icon: Info,
     title: "Sobre nós",
     paragraphs: [
-        "Fundamentado no Decreto nº 9.854, de 25 de junho de 2019, que instituiu o Plano Nacional de Internet das Coisas, o Ministério da Ciência, Tecnologia e Inovação (MCTI) lançou em 2019 a Câmara das Cidades 4.0, em parceria com o Ministério do Desenvolvimento Regional (MDR - atual Ministério das Cidades - MCID). A Câmara das Cidades 4.0 foi criada com objetivo de ser um fórum técnico e colaborativo para ampliar e discutir a política pública de cidades inteligentes no Brasil e conta com a colaboração da academia, do setor privado, de entidades representativas dos Estados e Municípios e da Sociedade Civil Organizada.",
-        "Um dos trabalhos desenvolvidos no âmbito da Câmara das Cidades 4.0, e que está ancorado nas diretrizes da Carta Brasileira para Cidades Inteligentes , foi a plataforma inteli.gente que diagnostica o nível de maturidade em transformação digital e desenvolvimento urbano sustentável das cidades brasileiras.", 
-      "O projeto inteli.gente foi desenvolvido para apoiar municípios na jornada de transformação digital e sustentabilidade, com foco em decisões baseadas em evidências.",
-      "Nossa proposta integra metodologia, dados públicos e visualizações para orientar diagnósticos, priorizar ações e fortalecer políticas voltadas a cidades inteligentes sustentáveis.",
+      {
+        subtitle: "IARAinteli.gente: Recriando ambientes, impulsionando municípios.",
+        text: [
+          "Para a nova IARAinteli.gente, inovação e propósito caminham juntos para transformar a gestão pública. Combinando o poder da Inteligência Artificial Recriando Ambientes (IARA) a uma metodologia analítica avançada (inteli.gente), levamos a transformação digital e o desenvolvimento sustentável ao ambiente onde a vida realmente acontece: os municípios.",
+          "Grandes estratégias costumam falhar quando ignoram a diversidade local. A IARAinteli.gente inova neste cenário ao oferecer uma visão com granularidade em nível municipal, identificando com precisão e predição o grau de maturidade digital e sustentável de cada cidade brasileira.",
+        ],
+      },
+      {
+        subtitle: "Colaboramos com:",
+        text: "Diagnóstico de Precisão e Predição Territorial: Mapeamento detalhado das capacidades tecnológicas, infraestrutura e governança de cada município. Decisões públicas de alto impacto não aceitam soluções genéricas. Identificamos a maturidade digital e sustentável exata do seu município para direcionar investimentos onde eles trazem maior retorno.",
+        bullets: [
+          "Cenários Recriados por IA: Simulação de ambientes e políticas públicas para otimizar a tomada de decisão com dados reais e preditivos. Simulação e Planejamento Preditivo com a aplicação de IA para recriar ambientes e simular cenários antes da aplicação de recursos públicos. Menos margem para erro, mais eficiência na gestão do orçamento.",
+          "Customização: Respeito à identidade local, traçando rotas de evolução tecnológica acessíveis para pequenos, médios e grandes centros urbanos. Simulação e Planejamento Preditivo: Aplicamos IA para recriar ambientes e simular cenários para aplicação de recursos públicos.",
+          "Alinhamento com Recomendações Y 4904 ITU-T, ODS e ISOs 37120,37122,37123 e 37125, integração direta de metas globais de sustentabilidade às rotinas e indicadores da administração pública local.",
+        ],
+      },
+      {
+        subtitle: "Acreditamos que:",
+        text: [
+          "A transformação digital não é privilégio de grandes metrópoles. Nossa metodologia adapta a tecnologia de ponta à escala da sua cidade, respeitando a realidade orçamentária e operacional local.",
+          "Entregamos a clareza que o gestor público precisa com um panorama granular que demonstra onde o seu município está na transformação digital e, onde pode chegar recomendando ações para aprimorar a tomada de decisões, contribuindo com a gestão e governança das políticas públicas.",
+          "Sabemos que a inteligência artificial só é verdadeiramente inteligente quando é humana, inclusiva e aplicável. Ao aproximar tecnologia de ponta e análise territorial granular, a IARAinteli.gente capacita gestores públicos a liderarem cidades mais eficientes, transparentes e sustentáveis.",
+        ],
+      },
+      {
+        subtitle: "Contexto institucional",
+        text: "Fundamentado no Decreto nº 9.854, de 25 de junho de 2019, que instituiu o Plano Nacional de Internet das Coisas, o Ministério da Ciência, Tecnologia e Inovação (MCTI) lançou em 2019 a Câmara das Cidades 4.0, em parceria com o Ministério do Desenvolvimento Regional (MDR - atual Ministério das Cidades - MCID). A Câmara das Cidades 4.0 foi criada com objetivo de ser um fórum técnico e colaborativo para ampliar e discutir a política pública de cidades inteligentes no Brasil e conta com a colaboração da academia, do setor privado, de entidades representativas dos Estados e Municípios e da Sociedade Civil Organizada.",
+      },
+      {
+        subtitle: "Origem da plataforma",
+        text: "Um dos trabalhos desenvolvidos no âmbito da Câmara das Cidades 4.0, e que está ancorado nas diretrizes da Carta Brasileira para Cidades Inteligentes, foi a plataforma inteli.gente, que diagnostica o nível de maturidade em transformação digital e desenvolvimento urbano sustentável das cidades brasileiras.",
+      },
+      {
+        subtitle: "Apoio aos municípios",
+        text: "O projeto inteli.gente foi desenvolvido para apoiar municípios na jornada de transformação digital e sustentabilidade, com foco em decisões baseadas em evidências.",
+      },
+      {
+        subtitle: "Nossa proposta",
+        text: "Nossa proposta integra metodologia, dados públicos e visualizações para orientar diagnósticos, priorizar ações e fortalecer políticas voltadas a cidades inteligentes sustentáveis.",
+      },
     ],
   },
   {
@@ -163,9 +199,36 @@ const Methodology = () => {
               </h2>
 
               <div className="mt-8 space-y-6 text-lg leading-relaxed text-[#4f5d73] md:text-xl">
-                {selectedTopic.paragraphs.map((paragraph) => (
-                  <p key={paragraph}>{paragraph}</p>
-                ))}
+                {selectedTopic.paragraphs.map((paragraph, index) => {
+                  if (typeof paragraph === "string") {
+                    return <p key={index}>{paragraph}</p>;
+                  }
+
+                  const texts = Array.isArray(paragraph.text)
+                    ? paragraph.text
+                    : [paragraph.text];
+
+                  return (
+                    <section key={paragraph.subtitle} className="space-y-3">
+                      <h3 className="text-2xl font-bold text-[#1f4e9b]">
+                        {paragraph.subtitle}
+                      </h3>
+                      {texts.map((text, textIndex) => (
+                        <p key={`${paragraph.subtitle}-${textIndex}`}>{text}</p>
+                      ))}
+
+                      {paragraph.bullets && (
+                        <ul className="list-disc space-y-2 pl-6 marker:text-[#1f4e9b]">
+                          {paragraph.bullets.map((bullet, bulletIndex) => (
+                            <li key={`${paragraph.subtitle}-bullet-${bulletIndex}`}>
+                              {bullet}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  );
+                })}
 
             {selectedTopic.id === "dimensoes" && (
             <div className="mt-8">

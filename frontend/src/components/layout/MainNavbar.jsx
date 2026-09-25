@@ -5,14 +5,17 @@ const MainNavbar = () => {
   return (
     <header className="w-full border-b border-[#e5e5e5] bg-white">
       <div className="mx-auto grid h-[88px] max-w-[1920px] grid-cols-[auto_1fr_auto] items-center px-14">
-        <Link to="/municipios" className="flex items-center">
+        <Link to="/municipios" className="inline-flex w-fit items-center">
           <img
             src="/logo_iara.png"
             alt="logo IARA"
             className="h-[45px] w-auto object-contain"
           />
         </Link>
-        <Link to="/municipios" className="flex items-center">
+        <Link
+          to="/municipios"
+          className="inline-flex w-fit items-center justify-self-start"
+        >
           <img
             src="/logo_inteli.gente.png"
             alt="inteli.gente MCTI"

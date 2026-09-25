@@ -8,14 +8,14 @@ def calcular(ind: Number) -> int:
         raise ValueError("Indicador de educacao invalido (< 0)")
     if ind == 0:
         return 1
-    if ind <= 2000:
+    if ind <= 2:
         return 2
-    if ind <= 3000:
+    if ind <= 3:
         return 3
-    if ind <= 4000:
+    if ind <= 4:
         return 4
-    if ind <= 5000:
+    if ind <= 5:
         return 5
-    if ind <= 6000:
+    if ind <= 6:
         return 6
     return 7

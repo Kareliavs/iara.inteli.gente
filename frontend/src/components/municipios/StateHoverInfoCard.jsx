@@ -121,6 +121,7 @@ const buildSummary = (rows) => {
   let areaTotal = 0;
   let maturitySum = 0;
   let maturityCount = 0;
+  let unansweredFormsTotal = 0;
 
   rows.forEach((item) => {
     if (item?.estado_sigla) {
@@ -142,6 +143,10 @@ const buildSummary = (rows) => {
       maturitySum += maturity;
       maturityCount += 1;
     }
+
+    if (item?.formulario_nao_respondido === true) {
+      unansweredFormsTotal += 1;
+    }
   });
 
   return {
@@ -151,6 +156,7 @@ const buildSummary = (rows) => {
     area_total: areaTotal,
     maturidade_media: maturityCount > 0 ? maturitySum / maturityCount : null,
     maturidade_count: maturityCount,
+    formularios_respondidos_total: rows.length - unansweredFormsTotal,
   };
 };
 
@@ -200,6 +206,16 @@ const renderDetailedSection = (summary) => {
             {summary.municipalities}
           </span>
         </div>
+        {summary.answeredForms != null && (
+          <div className="flex items-baseline justify-between gap-4">
+            <span className="text-muted-foreground">
+              {"Formul\u00e1rios respondidos"}
+            </span>
+            <span className="notranslate font-semibold" translate="no">
+              {summary.answeredForms}
+            </span>
+          </div>
+        )}
         <div className="flex items-baseline justify-between gap-4">
           <span className="text-muted-foreground">{"\u00c1rea total"}</span>
           <span className="notranslate font-semibold" translate="no">
@@ -398,7 +414,7 @@ const StateHoverInfoCard = ({
         <p className="text-sm text-muted-foreground">Carregando dados...</p>
 
         <div className="mt-5 space-y-2">
-          {Array.from({ length: 4 }).map((_, index) => (
+          {Array.from({ length: 5 }).map((_, index) => (
             <div key={index} className="h-4 rounded-full bg-muted" />
           ))}
         </div>
@@ -416,6 +432,11 @@ const StateHoverInfoCard = ({
         subtitle: scope.subtitle,
         population: formatPopulation(populationValue),
         municipalities: formatInteger(municipalitiesValue),
+        answeredForms: municipioInfo
+          ? formatInteger(
+              municipioRow?.formulario_nao_respondido === false ? 1 : 0
+            )
+          : formatInteger(summary.formularios_respondidos_total),
         area: formatArea(areaValue, language),
         averageLevel: formatAverageLevel(averageLevel),
         averageLabel: getAverageLabel(averageLevel),

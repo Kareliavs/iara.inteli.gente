@@ -11,7 +11,13 @@ const toSlug = (text) =>
     .replace(/'/g, "")
     .replace(/\s+/g, "-");
 
-const InputSearchCity = ({ joined = false }) => {
+const normalizeSearchText = (text) =>
+  String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+const InputSearchCity = ({ joined = false, availableMunicipios = null }) => {
   const [term, setTerm] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
@@ -31,6 +37,32 @@ const InputSearchCity = ({ joined = false }) => {
 
     const timeout = setTimeout(() => {
       setLoading(true);
+
+      if (Array.isArray(availableMunicipios)) {
+        const normalizedQuery = normalizeSearchText(query);
+        const matches = availableMunicipios
+          .filter((city) =>
+            normalizeSearchText(city?.municipio_nome).includes(normalizedQuery)
+          )
+          .sort((a, b) =>
+            String(a?.municipio_nome || "").localeCompare(
+              String(b?.municipio_nome || ""),
+              "pt-BR"
+            )
+          )
+          .slice(0, 20)
+          .map((city) => ({
+            ...city,
+            result: `${city.municipio_nome} - ${city.estado_sigla}`,
+            friendlyName: toSlug(
+              `${city.municipio_nome}-${city.estado_sigla}`
+            ),
+          }));
+
+        setSuggestions(matches);
+        setLoading(false);
+        return;
+      }
 
       fetch(`/api/municipios/busca?q=${encodeURIComponent(query)}`, {
         signal: controller.signal,
@@ -59,7 +91,7 @@ const InputSearchCity = ({ joined = false }) => {
       controller.abort();
       clearTimeout(timeout);
     };
-  }, [term]);
+  }, [term, availableMunicipios]);
 
   const handleSelect = (city) => {
     setShowSuggestions(false);

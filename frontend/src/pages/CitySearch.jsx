@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import InputSearchCity from "@/components/municipios/InputSearchCity";
 import SearchFilters from "@/components/municipios/SearchFilters";
 import StateHoverInfoCard from "@/components/municipios/StateHoverInfoCard";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import BrazilMap from "../components/municipios/BrazilMap";
 
 const stateNames = {
@@ -34,8 +35,15 @@ const stateNames = {
   TO: "Tocantins",
 };
 
-const MUNICIPIOS_CACHE_KEY = "inteligente:municipios:v4";
+const MUNICIPIOS_CACHE_KEY = "inteligente:municipios:v5";
 const MUNICIPIOS_CACHE_TTL_MS = 30 * 60 * 1000;
+const CITY_SCOPE_ALL = "todos";
+const CITY_SCOPE_RESPONDED = "respondentes";
+
+export const getRespondedMunicipios = (municipios) =>
+  (Array.isArray(municipios) ? municipios : []).filter(
+    (item) => item?.formulario_nao_respondido === false
+  );
 
 const hasValidMunicipioLevels = (items) =>
   Array.isArray(items) &&
@@ -123,6 +131,7 @@ const buildFilterOptions = (municipios) => {
 };
 
 const CitySearch = () => {
+  const [cityScope, setCityScope] = useState(CITY_SCOPE_ALL);
   const [selectedState, setSelectedState] = useState("");
   const [selectedRegion, setSelectedRegion] = useState("");
   const [selectedInfluence, setSelectedInfluence] = useState("");
@@ -132,15 +141,23 @@ const CitySearch = () => {
   const [municipiosLoading, setMunicipiosLoading] = useState(
     () => !hasValidMunicipioLevels(readCachedMunicipios())
   );
-  const { regionOptions, influenceOptions } = useMemo(
-    () => buildFilterOptions(municipiosData),
+  const respondedMunicipiosData = useMemo(
+    () => getRespondedMunicipios(municipiosData),
     [municipiosData]
+  );
+  const visibleMunicipiosData =
+    cityScope === CITY_SCOPE_RESPONDED
+      ? respondedMunicipiosData
+      : municipiosData;
+  const { regionOptions, influenceOptions } = useMemo(
+    () => buildFilterOptions(visibleMunicipiosData),
+    [visibleMunicipiosData]
   );
 
   useEffect(() => {
     let cancelled = false;
 
-    fetch("/api/municipios?calc=latest-levels-v4", {
+    fetch("/api/municipios?calc=latest-levels-v5", {
       cache: "no-store",
       headers: {
         "Cache-Control": "no-cache",
@@ -174,13 +191,26 @@ const CitySearch = () => {
     };
   }, []);
 
-  const mapTitle = selectedInfluence
+  const baseMapTitle = selectedInfluence
     ? `Rede de influência - ${selectedInfluence}`
     : selectedState
     ? `Estado - ${stateNames[selectedState] || selectedState}`
     : selectedRegion
     ? `Região - ${selectedRegion}`
     : "Brasil";
+  const mapTitle =
+    cityScope === CITY_SCOPE_RESPONDED
+      ? `${baseMapTitle} — municípios respondentes`
+      : baseMapTitle;
+
+  const handleCityScopeChange = (value) => {
+    setCityScope(value);
+    setSelectedState("");
+    setSelectedRegion("");
+    setSelectedInfluence("");
+    setHoveredStateInfo(null);
+    setHoveredMunicipioInfo(null);
+  };
 
   const handleStateChange = (value) => {
     setSelectedState(value);
@@ -214,8 +244,16 @@ const CitySearch = () => {
                 Conheça o nível de maturidade da sua cidade
               </h1>
 
+              <p className="mb-2 max-w-[720px] text-base font-medium italic text-hero-foreground/90 md:text-lg">
+                Tecnologia de ponta com olhar granular para
+                quem decide o amanhã
+              </p>
+
               <div className="mt-2">
-                <InputSearchCity joined />
+                <InputSearchCity
+                  joined
+                  availableMunicipios={visibleMunicipiosData}
+                />
                 <SearchFilters
                   joined
                   selectedState={selectedState}
@@ -230,7 +268,7 @@ const CitySearch = () => {
                 <StateHoverInfoCard
                   stateInfo={hoveredStateInfo}
                   municipioInfo={hoveredMunicipioInfo}
-                  municipiosData={municipiosData}
+                  municipiosData={visibleMunicipiosData}
                   loading={municipiosLoading}
                   selectedRegion={selectedRegion}
                   selectedState={selectedState}
@@ -240,20 +278,59 @@ const CitySearch = () => {
             </div>
 
             <div className="flex min-h-[600px] flex-col rounded-xl bg-background p-6 lg:min-h-[620px] lg:p-8">
-              <p className="text-sm font-semibold text-brand-cyan">
-                Mapa selecionado
-              </p>
+              <div className="mb-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-semibold text-brand-cyan">
+                    Mapa selecionado
+                  </p>
 
-              <h2 className="mb-4 text-2xl font-bold text-foreground">
-                {mapTitle}
-              </h2>
+                  <Tabs
+                    value={cityScope}
+                    onValueChange={handleCityScopeChange}
+                    className="shrink-0"
+                  >
+                    <TabsList
+                      aria-label="Escopo dos municípios exibidos no mapa"
+                      className="h-8 w-auto justify-start gap-0.5 rounded-lg bg-muted/50 p-1"
+                    >
+                      <TabsTrigger
+                        value={CITY_SCOPE_ALL}
+                        className="h-6 rounded-md px-2.5 py-1 text-[11px] font-medium text-muted-foreground shadow-none data-[state=active]:bg-brand-cyan/10 data-[state=active]:text-brand-cyan data-[state=active]:shadow-none"
+                      >
+                        Todos
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value={CITY_SCOPE_RESPONDED}
+                        className="h-6 rounded-md px-2.5 py-1 text-[11px] font-medium text-muted-foreground shadow-none data-[state=active]:bg-brand-cyan/10 data-[state=active]:text-brand-cyan data-[state=active]:shadow-none"
+                      >
+                        Respondentes
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+
+                <h2 className="mt-2 text-2xl font-bold text-foreground">
+                  {mapTitle}
+                </h2>
+              </div>
 
               <div className="min-h-[520px] flex-1">
                 <BrazilMap
+                  key={cityScope}
                   selectedState={selectedState}
                   selectedRegion={selectedRegion}
                   selectedInfluence={selectedInfluence}
-                  municipiosData={municipiosData}
+                  municipiosData={visibleMunicipiosData}
+                  referenceMunicipiosData={municipiosData}
+                  restrictToProvidedMunicipios={
+                    cityScope === CITY_SCOPE_RESPONDED
+                  }
+                  showMunicipalitiesForGeographicFilter={
+                    cityScope === CITY_SCOPE_RESPONDED
+                  }
+                  highlightProvidedMunicipios={
+                    cityScope === CITY_SCOPE_RESPONDED
+                  }
                   onHoverStateChange={setHoveredStateInfo}
                   onHoverMunicipioChange={setHoveredMunicipioInfo}
                 />

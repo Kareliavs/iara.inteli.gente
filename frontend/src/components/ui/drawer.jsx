@@ -1,2 +1,0 @@
-// drawer component - stub
-export {};

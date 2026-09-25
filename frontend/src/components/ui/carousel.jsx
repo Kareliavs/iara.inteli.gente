@@ -1,2 +1,0 @@
-// carousel component - stub
-export {};
