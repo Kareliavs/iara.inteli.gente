@@ -121,6 +121,8 @@ function normalizeMunicipios(rows) {
     rede_influencia_nivel: row.rede_influencia_nivel == null
       ? null
       : String(row.rede_influencia_nivel),
+    formulario_nao_respondido:
+      row.formulario_nao_respondido === true || row.formulario_nao_respondido === "true",
   }));
 }
 
@@ -160,7 +162,7 @@ async function listarMunicipiosComCache({ forceRefresh = false } = {}) {
 
 async function getMunicipios(req, res) {
   try {
-    const forceRefresh = req.query.calc === "latest-levels-v4";
+    const forceRefresh = ["latest-levels-v4", "latest-levels-v5"].includes(req.query.calc);
     const municipios = await listarMunicipiosComCache({ forceRefresh });
 
     res.set(

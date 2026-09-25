@@ -5,6 +5,8 @@
   "scripts": {
     "auth:hash-password": "node scripts/hash-password.js",
     "auth:create-admin": "node scripts/create-admin.js",
+    "email:check": "node scripts/check-email.js",
+    "email:dns-check": "node scripts/check-email-dns.js",
     "db:migrate-form": "node scripts/migrate-form.js",
     "form:check-catalog": "node scripts/check-form-catalog.js",
     "test": "node --test",

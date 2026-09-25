@@ -1,5 +1,82 @@
 const nodemailer = require("nodemailer");
 
+const SMTP_VARIABLES = [
+  "APP_BASE_URL",
+  "SMTP_HOST",
+  "SMTP_USER",
+  "SMTP_PASSWORD",
+  "SMTP_FROM",
+];
+
+let cachedTransport = null;
+
+const EMAIL_COPY = {
+  pt: {
+    greeting: "Olá",
+    confirmSubject: "Confirme sua conta no Portal da Gestão Municipal",
+    confirmInstruction: "Confirme sua conta acessando o link abaixo:",
+    confirmTitle: "Confirme sua conta",
+    confirmBody: "Confirme seu e-mail para concluir o cadastro no Portal da Gestão Municipal.",
+    confirmButton: "Confirmar minha conta",
+    expires: "Este link expira em 30 minutos.",
+    resetSubject: "Redefinição de senha do Portal da Gestão Municipal",
+    resetInstruction: "Redefina sua senha acessando o link abaixo:",
+    resetTitle: "Redefina sua senha",
+    resetBody: "Recebemos uma solicitação para redefinir sua senha.",
+    resetButton: "Redefinir minha senha",
+    resetExpires: "O link expira em 30 minutos. Se você não solicitou a alteração, ignore este e-mail.",
+  },
+  en: {
+    greeting: "Hello",
+    confirmSubject: "Confirm your account on the Municipal Management Portal",
+    confirmInstruction: "Confirm your account using the link below:",
+    confirmTitle: "Confirm your account",
+    confirmBody: "Confirm your email address to complete your registration on the Municipal Management Portal.",
+    confirmButton: "Confirm my account",
+    expires: "This link expires in 30 minutes.",
+    resetSubject: "Municipal Management Portal password reset",
+    resetInstruction: "Reset your password using the link below:",
+    resetTitle: "Reset your password",
+    resetBody: "We received a request to reset your password.",
+    resetButton: "Reset my password",
+    resetExpires: "This link expires in 30 minutes. If you did not request this change, ignore this email.",
+  },
+  fr: {
+    greeting: "Bonjour",
+    confirmSubject: "Confirmez votre compte sur le Portail de gestion municipale",
+    confirmInstruction: "Confirmez votre compte en utilisant le lien ci-dessous :",
+    confirmTitle: "Confirmez votre compte",
+    confirmBody: "Confirmez votre adresse e-mail pour terminer votre inscription sur le Portail de gestion municipale.",
+    confirmButton: "Confirmer mon compte",
+    expires: "Ce lien expire dans 30 minutes.",
+    resetSubject: "Réinitialisation du mot de passe du Portail de gestion municipale",
+    resetInstruction: "Réinitialisez votre mot de passe en utilisant le lien ci-dessous :",
+    resetTitle: "Réinitialisez votre mot de passe",
+    resetBody: "Nous avons reçu une demande de réinitialisation de votre mot de passe.",
+    resetButton: "Réinitialiser mon mot de passe",
+    resetExpires: "Ce lien expire dans 30 minutes. Si vous n'avez pas demandé cette modification, ignorez cet e-mail.",
+  },
+  es: {
+    greeting: "Hola",
+    confirmSubject: "Confirma tu cuenta en el Portal de Gestión Municipal",
+    confirmInstruction: "Confirma tu cuenta mediante el siguiente enlace:",
+    confirmTitle: "Confirma tu cuenta",
+    confirmBody: "Confirma tu correo electrónico para completar el registro en el Portal de Gestión Municipal.",
+    confirmButton: "Confirmar mi cuenta",
+    expires: "Este enlace caduca en 30 minutos.",
+    resetSubject: "Restablecimiento de contraseña del Portal de Gestión Municipal",
+    resetInstruction: "Restablece tu contraseña mediante el siguiente enlace:",
+    resetTitle: "Restablece tu contraseña",
+    resetBody: "Recibimos una solicitud para restablecer tu contraseña.",
+    resetButton: "Restablecer mi contraseña",
+    resetExpires: "Este enlace caduca en 30 minutos. Si no solicitaste este cambio, ignora este correo electrónico.",
+  },
+};
+
+function emailCopy(language) {
+  return EMAIL_COPY[["pt", "en", "fr", "es"].includes(language) ? language : "pt"];
+}
+
 function configurationError(variableName) {
   const error = new Error(`Envio de e-mail não configurado: ${variableName}`);
   error.status = 503;
@@ -12,17 +89,73 @@ function requiredEnvironment(variableName) {
   return value;
 }
 
-function createTransport() {
+function isEmailDeliveryConfigured() {
+  return SMTP_VARIABLES.every((variableName) =>
+    Boolean(String(process.env[variableName] || "").trim()),
+  );
+}
+
+function assertEmailDeliveryConfigured() {
+  for (const variableName of SMTP_VARIABLES) requiredEnvironment(variableName);
+}
+
+function smtpConfiguration() {
+  assertEmailDeliveryConfigured();
   const port = Number(process.env.SMTP_PORT || 587);
-  return nodemailer.createTransport({
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    const error = new Error("Envio de e-mail não configurado: SMTP_PORT inválida");
+    error.status = 503;
+    throw error;
+  }
+  const secure = String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || port === 465;
+  const configuration = {
+    auth: {
+      pass: requiredEnvironment("SMTP_PASSWORD"),
+      user: requiredEnvironment("SMTP_USER"),
+    },
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
     host: requiredEnvironment("SMTP_HOST"),
     port,
-    secure: String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || port === 465,
-    auth: {
-      user: requiredEnvironment("SMTP_USER"),
-      pass: requiredEnvironment("SMTP_PASSWORD"),
-    },
-  });
+    requireTLS: process.env.NODE_ENV === "production" && !secure,
+    secure,
+    socketTimeout: 20_000,
+    tls: { minVersion: "TLSv1.2" },
+  };
+  const dkimSelector = String(process.env.DKIM_SELECTOR || "").trim();
+  const dkimPrivateKey = String(process.env.DKIM_PRIVATE_KEY || "").replace(/\\n/g, "\n").trim();
+  const dkimDomainName = String(process.env.DKIM_DOMAIN_NAME || "").trim();
+  if (dkimSelector && dkimPrivateKey && dkimDomainName) {
+    configuration.dkim = {
+      domainName: dkimDomainName,
+      keySelector: dkimSelector,
+      privateKey: dkimPrivateKey,
+    };
+  }
+  return configuration;
+}
+
+function createTransport() {
+  return nodemailer.createTransport(smtpConfiguration());
+}
+
+function getTransport() {
+  if (!cachedTransport) cachedTransport = createTransport();
+  return cachedTransport;
+}
+
+function resetEmailTransportForTests() {
+  cachedTransport = null;
+}
+
+async function verifyEmailTransport({ required = false, transport } = {}) {
+  if (!isEmailDeliveryConfigured()) {
+    if (required) assertEmailDeliveryConfigured();
+    return { configured: false, verified: false };
+  }
+  const activeTransport = transport || getTransport();
+  await activeTransport.verify();
+  return { configured: true, verified: true };
 }
 
 function escapeHtml(value) {
@@ -34,72 +167,102 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-async function sendAccountConfirmationEmail({ email, name, token }) {
+function accountConfirmationMessage({ email, language = "pt", name, token }) {
   const appBaseUrl = requiredEnvironment("APP_BASE_URL").replace(/\/$/, "");
   const confirmationUrl = `${appBaseUrl}/prefeitura/confirmar-conta?token=${encodeURIComponent(token)}`;
-  const from = String(process.env.SMTP_FROM || process.env.SMTP_USER || "").trim();
-  if (!from) throw configurationError("SMTP_FROM");
-
-  await createTransport().sendMail({
-    from,
+  const copy = emailCopy(language);
+  return {
+    from: requiredEnvironment("SMTP_FROM"),
     to: email,
-    subject: "Confirme sua conta no Portal da Gestão Municipal",
+    subject: copy.confirmSubject,
     text: [
-      `Olá, ${name}.`,
+      `${copy.greeting}, ${name}.`,
       "",
-      "Confirme sua conta acessando o link abaixo:",
+      copy.confirmInstruction,
       confirmationUrl,
       "",
-      "Este link expira em 30 minutos.",
+      copy.expires,
     ].join("\n"),
     html: `
       <div style="font-family:Arial,sans-serif;color:#26364d;line-height:1.6">
-        <h2>Confirme sua conta</h2>
-        <p>Olá, ${escapeHtml(name)}.</p>
-        <p>Confirme seu e-mail para concluir o cadastro no Portal da Gestão Municipal.</p>
+        <h2>${copy.confirmTitle}</h2>
+        <p>${copy.greeting}, ${escapeHtml(name)}.</p>
+        <p>${copy.confirmBody}</p>
         <p style="margin:28px 0">
           <a href="${escapeHtml(confirmationUrl)}" style="background:#2f66d0;color:#fff;padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:bold">
-            Confirmar minha conta
+            ${copy.confirmButton}
           </a>
         </p>
-        <p style="font-size:13px;color:#6b788c">Este link expira em 30 minutos.</p>
+        <p style="font-size:13px;color:#6b788c">${copy.expires}</p>
       </div>
     `,
-  });
+  };
 }
 
-async function sendPasswordResetEmail({ email, name, token }) {
+function passwordResetMessage({ email, language = "pt", name, token }) {
   const appBaseUrl = requiredEnvironment("APP_BASE_URL").replace(/\/$/, "");
   const resetUrl = `${appBaseUrl}/prefeitura/redefinir-senha?token=${encodeURIComponent(token)}`;
-  const from = String(process.env.SMTP_FROM || process.env.SMTP_USER || "").trim();
-  if (!from) throw configurationError("SMTP_FROM");
-
-  await createTransport().sendMail({
-    from,
+  const copy = emailCopy(language);
+  return {
+    from: requiredEnvironment("SMTP_FROM"),
     to: email,
-    subject: "Redefinição de senha do Portal da Gestão Municipal",
+    subject: copy.resetSubject,
     text: [
-      `Olá, ${name}.`,
+      `${copy.greeting}, ${name}.`,
       "",
-      "Redefina sua senha acessando o link abaixo:",
+      copy.resetInstruction,
       resetUrl,
       "",
-      "Este link expira em 30 minutos. Se você não fez esta solicitação, ignore a mensagem.",
+      copy.resetExpires,
     ].join("\n"),
     html: `
       <div style="font-family:Arial,sans-serif;color:#26364d;line-height:1.6">
-        <h2>Redefina sua senha</h2>
-        <p>Olá, ${escapeHtml(name)}.</p>
-        <p>Recebemos uma solicitação para redefinir sua senha.</p>
+        <h2>${copy.resetTitle}</h2>
+        <p>${copy.greeting}, ${escapeHtml(name)}.</p>
+        <p>${copy.resetBody}</p>
         <p style="margin:28px 0">
           <a href="${escapeHtml(resetUrl)}" style="background:#2f66d0;color:#fff;padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:bold">
-            Redefinir minha senha
+            ${copy.resetButton}
           </a>
         </p>
-        <p style="font-size:13px;color:#6b788c">O link expira em 30 minutos. Se você não solicitou a alteração, ignore este e-mail.</p>
+        <p style="font-size:13px;color:#6b788c">${copy.resetExpires}</p>
       </div>
     `,
-  });
+  };
 }
 
-module.exports = { sendAccountConfirmationEmail, sendPasswordResetEmail };
+async function deliverEmailJob(job, { transport } = {}) {
+  assertEmailDeliveryConfigured();
+  const message = job.type === "ACCOUNT_CONFIRMATION"
+    ? accountConfirmationMessage(job)
+    : job.type === "PASSWORD_RESET"
+      ? passwordResetMessage(job)
+      : null;
+  if (!message) throw new Error(`Tipo de e-mail não suportado: ${job.type}`);
+
+  const info = await (transport || getTransport()).sendMail(message);
+  if (Array.isArray(info?.rejected) && info.rejected.length > 0) {
+    throw new Error("O servidor SMTP rejeitou o destinatário");
+  }
+  return info;
+}
+
+async function sendAccountConfirmationEmail({ email, name, token }, options) {
+  return deliverEmailJob({ email, name, token, type: "ACCOUNT_CONFIRMATION" }, options);
+}
+
+async function sendPasswordResetEmail({ email, name, token }, options) {
+  return deliverEmailJob({ email, name, token, type: "PASSWORD_RESET" }, options);
+}
+
+module.exports = {
+  accountConfirmationMessage,
+  assertEmailDeliveryConfigured,
+  deliverEmailJob,
+  isEmailDeliveryConfigured,
+  passwordResetMessage,
+  resetEmailTransportForTests,
+  sendAccountConfirmationEmail,
+  sendPasswordResetEmail,
+  verifyEmailTransport,
+};

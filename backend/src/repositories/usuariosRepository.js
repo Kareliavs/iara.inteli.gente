@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const { pool } = require("../config/db");
+const { enqueueEmail } = require("./emailOutboxRepository");
 
 function repositoryError(message, status) {
   const error = new Error(message);
@@ -38,18 +39,29 @@ async function atualizarSenhaUsuario(usuarioId, usuarioSenha) {
   );
 }
 
-async function buscarMunicipioPorDominio(client, municipioDominio, estadoSigla) {
-  const result = await client.query(
-    `SELECT municipio_cod_ibge, municipio_nome, estado_sigla
-     FROM bd.municipio
-     WHERE REGEXP_REPLACE(LOWER(unaccent(municipio_nome)), '[^a-z0-9]', '', 'g') = $1
-       AND UPPER(estado_sigla) = $2
-     LIMIT 2`,
-    [municipioDominio, estadoSigla],
-  );
+async function buscarMunicipioCadastro(
+  client,
+  { municipioCodIbge, municipioDominio, estadoSigla },
+) {
+  const result = municipioCodIbge
+    ? await client.query(
+        `SELECT municipio_cod_ibge, municipio_nome, estado_sigla
+         FROM bd.municipio
+         WHERE municipio_cod_ibge = $1
+         LIMIT 1`,
+        [municipioCodIbge],
+      )
+    : await client.query(
+        `SELECT municipio_cod_ibge, municipio_nome, estado_sigla
+         FROM bd.municipio
+         WHERE REGEXP_REPLACE(LOWER(unaccent(municipio_nome)), '[^a-z0-9]', '', 'g') = $1
+           AND UPPER(estado_sigla) = $2
+         LIMIT 2`,
+        [municipioDominio, estadoSigla],
+      );
   if (result.rows.length !== 1) {
     throw repositoryError(
-      "Não foi possível identificar um município pelo domínio deste e-mail",
+      "Não foi possível identificar o município associado a este cadastro",
       422,
     );
   }
@@ -57,7 +69,9 @@ async function buscarMunicipioPorDominio(client, municipioDominio, estadoSigla) 
 }
 
 async function criarCadastroPendente({
+  emailJob,
   estadoSigla,
+  municipioCodIbge,
   municipioDominio,
   tokenHash,
   usuarioLogin,
@@ -67,11 +81,11 @@ async function criarCadastroPendente({
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const municipality = await buscarMunicipioPorDominio(
-      client,
+    const municipality = await buscarMunicipioCadastro(client, {
+      municipioCodIbge,
       municipioDominio,
       estadoSigla,
-    );
+    });
     const existingUser = await client.query(
       "SELECT 1 FROM bd.usuario WHERE LOWER(usuario_login) = LOWER($1)",
       [usuarioLogin],
@@ -100,6 +114,7 @@ async function criarCadastroPendente({
         tokenHash,
       ],
     );
+    await enqueueEmail(client, emailJob);
     await client.query("COMMIT");
     return { cadastroId, ...municipality };
   } catch (error) {
@@ -167,16 +182,28 @@ async function confirmarCadastro(tokenHash) {
   }
 }
 
-async function renovarCadastroPendente(usuarioLogin, tokenHash) {
-  const result = await pool.query(
-    `UPDATE stg.usuario_cadastro_pendente
-     SET token_hash = $2, solicitado_em = NOW(),
-         expira_em = NOW() + INTERVAL '30 minutes'
-     WHERE LOWER(usuario_login) = LOWER($1)
-     RETURNING cadastro_id, usuario_nome, usuario_login`,
-    [usuarioLogin, tokenHash],
-  );
-  return result.rows[0] || null;
+async function renovarCadastroPendente(usuarioLogin, tokenHash, createEmailJob) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query(
+      `UPDATE stg.usuario_cadastro_pendente
+       SET token_hash = $2, solicitado_em = NOW(),
+           expira_em = NOW() + INTERVAL '30 minutes'
+       WHERE LOWER(usuario_login) = LOWER($1)
+       RETURNING cadastro_id, usuario_nome, usuario_login`,
+      [usuarioLogin, tokenHash],
+    );
+    const pending = result.rows[0] || null;
+    if (pending) await enqueueEmail(client, createEmailJob(pending));
+    await client.query("COMMIT");
+    return pending;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function criarSessao({ tokenHash, ttlSeconds, usuarioId }) {
@@ -224,31 +251,46 @@ async function revogarSessao(tokenHash) {
   );
 }
 
-async function criarRedefinicaoSenha(usuarioLogin, tokenHash) {
-  await pool.query(
-    "DELETE FROM stg.usuario_redefinicao_senha WHERE expira_em <= NOW()",
-  );
-  const userResult = await pool.query(
-    `SELECT usuario_id, usuario_nome, usuario_login
-     FROM bd.usuario
-     WHERE LOWER(usuario_login) = LOWER($1)
-     LIMIT 1`,
-    [usuarioLogin],
-  );
-  const user = userResult.rows[0];
-  if (!user) return null;
+async function criarRedefinicaoSenha(usuarioLogin, tokenHash, createEmailJob) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      "DELETE FROM stg.usuario_redefinicao_senha WHERE expira_em <= NOW()",
+    );
+    const userResult = await client.query(
+      `SELECT usuario_id, usuario_nome, usuario_login
+       FROM bd.usuario
+       WHERE LOWER(usuario_login) = LOWER($1)
+       LIMIT 1
+       FOR UPDATE`,
+      [usuarioLogin],
+    );
+    const user = userResult.rows[0];
+    if (!user) {
+      await client.query("COMMIT");
+      return null;
+    }
 
-  await pool.query(
-    `INSERT INTO stg.usuario_redefinicao_senha
-       (redefinicao_id, usuario_id, token_hash, expira_em)
-     VALUES ($1, $2, $3, NOW() + INTERVAL '30 minutes')
-     ON CONFLICT (usuario_id)
-     DO UPDATE SET token_hash = EXCLUDED.token_hash,
-                   solicitado_em = NOW(),
-                   expira_em = EXCLUDED.expira_em`,
-    [crypto.randomUUID(), user.usuario_id, tokenHash],
-  );
-  return user;
+    await client.query(
+      `INSERT INTO stg.usuario_redefinicao_senha
+         (redefinicao_id, usuario_id, token_hash, expira_em)
+       VALUES ($1, $2, $3, NOW() + INTERVAL '30 minutes')
+       ON CONFLICT (usuario_id)
+       DO UPDATE SET token_hash = EXCLUDED.token_hash,
+                     solicitado_em = NOW(),
+                     expira_em = EXCLUDED.expira_em`,
+      [crypto.randomUUID(), user.usuario_id, tokenHash],
+    );
+    await enqueueEmail(client, createEmailJob(user));
+    await client.query("COMMIT");
+    return user;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function confirmarRedefinicaoSenha(tokenHash, usuarioSenha) {

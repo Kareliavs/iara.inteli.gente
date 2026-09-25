@@ -1,159 +1,99 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
-  AssistenteServiceError,
-  DEFAULT_SERVICE_URL,
-  solicitarRespostaAssistente,
+  CHALLENGE_DIMENSIONS,
+  executarConsultaOrientada,
+  normalizeIndicators,
 } = require("../src/services/assistenteService");
 
-const requestPayload = {
-  pergunta: "Como está o município?",
-  contexto: {
-    municipio_cod_ibge: 3548906,
-    municipio_nome: "São Carlos",
-    estado_sigla: "SP",
-    municipio_regiao: "Sudeste",
-    idioma: "pt",
-  },
+const municipio = {
+  municipio_cod_ibge: 3548906,
+  municipio_nome: "São Carlos",
+  estado_sigla: "SP",
 };
 
-function validResponse(overrides = {}) {
-  return {
-    resposta: "Resposta baseada em evidências.",
-    municipio: { nome: "São Carlos", codigo_ibge: 3548906, uf: "SP" },
-    indicadores_utilizados: ["3077"],
-    anos_utilizados: [2024],
-    fontes: [{ titulo: "IBGE", referencia: "Indicador 3077" }],
-    limitacoes: [],
-    ...overrides,
-  };
-}
+const rows = [
+  { indicador_referencia: 1001, indicador_nome: "Indicador A", indicador_nivel: 7, indicador_valor: 10, ano: 2024, variavel_fontes: ["IBGE"] },
+  { indicador_referencia: 1002, indicador_nome: "Indicador B", indicador_nivel: 2, indicador_valor: 20, ano: 2023, variavel_fontes: ["Fonte B"] },
+  { indicador_referencia: 1003, indicador_nome: "Indicador C", indicador_nivel: null, indicador_valor: null, ano: null },
+];
 
-function jsonResponse(payload, status = 200) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-test("encaminha o payload ao endpoint interno e sanitiza a resposta", async () => {
-  let receivedUrl = null;
-  let receivedOptions = null;
-  const result = await solicitarRespostaAssistente(requestPayload, {
-    env: {
-      AI_SERVICE_URL: "http://127.0.0.1:8000/",
-      AI_SERVICE_TIMEOUT_MS: "1000",
-      AI_SERVICE_TOKEN: "token-interno",
-    },
-    fetchImpl: async (url, options) => {
-      receivedUrl = url;
-      receivedOptions = options;
-      return jsonResponse(validResponse({ campo_interno: "não deve vazar" }));
-    },
-  });
-
-  assert.equal(receivedUrl, "http://127.0.0.1:8000/v1/assistente/perguntar");
-  assert.equal(receivedOptions.method, "POST");
-  assert.equal(receivedOptions.headers.Accept, "application/json");
-  assert.equal(receivedOptions.headers["X-AI-Service-Token"], "token-interno");
-  assert.deepEqual(JSON.parse(receivedOptions.body), requestPayload);
-  assert.ok(receivedOptions.signal instanceof AbortSignal);
-  assert.equal(Object.hasOwn(result, "campo_interno"), false);
-  assert.deepEqual(result, validResponse());
+const request = (acao, indicatorIds = [1001, 1002, 1003]) => ({
+  acao,
+  municipio,
+  contexto: {
+    municipio_cod_ibge: 3548906,
+    dimensao_codigo: "economica",
+    idioma: "pt",
+    indicador_ids: indicatorIds,
+  },
 });
 
-test("usa o endpoint local padrão quando a URL interna não está configurada", async () => {
-  let receivedUrl = null;
-  const result = await solicitarRespostaAssistente(requestPayload, {
-    env: {},
-    fetchImpl: async (url) => {
-      receivedUrl = url;
-      return jsonResponse(validResponse());
+test("normaliza os indicadores municipais", () => {
+  const indicators = normalizeIndicators(rows, [1001, 1002]);
+  assert.equal(indicators.length, 2);
+  assert.equal(indicators[0].nivel, 7);
+});
+
+test("compara municípios semelhantes em seções por dimensão", async () => {
+  let receivedCodes = null;
+  let receivedIndicators = null;
+  const result = await executarConsultaOrientada(request("comparar_municipios"), {
+    listarSemelhantes: async () => [
+      { municipio_cod_ibge: 3548906, municipio_nome: "São Carlos", estado_sigla: "SP", is_current: true },
+      { municipio_cod_ibge: 3509502, municipio_nome: "Campinas", estado_sigla: "SP", is_current: false },
+    ],
+    listarNiveis: async (codes, indicators) => {
+      receivedCodes = codes;
+      receivedIndicators = indicators;
+      return CHALLENGE_DIMENSIONS.flatMap((dimension, dimensionIndex) => [
+        { municipio_cod_ibge: 3548906, indicador_referencia: dimension.ids[0], indicador_nivel: 7 - dimensionIndex },
+        { municipio_cod_ibge: 3509502, indicador_referencia: dimension.ids[0], indicador_nivel: 4 + dimensionIndex },
+      ]);
     },
   });
 
-  assert.equal(receivedUrl, `${DEFAULT_SERVICE_URL}/v1/assistente/perguntar`);
-  assert.equal(result.resposta, "Resposta baseada em evidências.");
+  assert.deepEqual(receivedCodes, [3548906, 3509502]);
+  assert.equal(receivedIndicators.length, CHALLENGE_DIMENSIONS.flatMap((dimension) => dimension.ids).length);
+  assert.match(result.resposta, /resultados separados por dimensão/);
+  assert.equal(result.dados.tipo, "comparar_municipios");
+  assert.deepEqual(result.dados.secoes.map((section) => section.codigo), ["economica", "sociocultural", "meio_ambiente"]);
+  assert.deepEqual(result.dados.secoes.map((section) => section.itens[0].pontuacao), [100, 86, 71]);
+  assert.equal(result.dados.secoes[0].itens[0].atual, true);
+  assert.deepEqual(result.indicadores_utilizados, []);
 });
 
-test("rejeita URL interna inválida antes de tentar conexão", async () => {
-  let fetchCalled = false;
-  await assert.rejects(
-    solicitarRespostaAssistente(requestPayload, {
-      env: { AI_SERVICE_URL: "ftp://127.0.0.1:8001" },
-      fetchImpl: async () => {
-        fetchCalled = true;
-      },
-    }),
-    (error) => error instanceof AssistenteServiceError
-      && error.status === 503
-      && error.code === "AI_SERVICE_INVALID_URL",
+test("separa cinco desafios em cada dimensão da transformação digital", async () => {
+  const challengeRows = CHALLENGE_DIMENSIONS.flatMap((dimension) =>
+    dimension.ids.slice(0, 6).map((id, index) => ({
+      indicador_referencia: id,
+      indicador_nome: `${dimension.codigo} ${id}`,
+      indicador_nivel: index + 1,
+    })),
   );
-  assert.equal(fetchCalled, false);
-});
-
-test("mapeia falhas do upstream sem expor seu corpo", async () => {
-  await assert.rejects(
-    solicitarRespostaAssistente(requestPayload, {
-      env: { AI_SERVICE_URL: "http://127.0.0.1:8000" },
-      fetchImpl: async () => jsonResponse({ detail: "chave secreta inválida" }, 500),
-    }),
-    (error) => error instanceof AssistenteServiceError
-      && error.status === 502
-      && error.message === "Serviço de IA indisponível"
-      && !error.message.includes("chave secreta"),
+  const result = await executarConsultaOrientada(
+    request("desafios_oportunidades_transformacao_digital"),
+    { listarIndicadores: async () => challengeRows },
   );
+
+  assert.equal(result.dados.secoes.length, 3);
+  assert.deepEqual(result.dados.secoes.map((section) => section.itens.length), [5, 5, 5]);
+  assert.deepEqual(result.dados.secoes.map((section) => section.codigo), [
+    "economica",
+    "sociocultural",
+    "meio_ambiente",
+  ]);
+  assert.equal(result.dados.secoes[0].itens[0].nivel, 1);
+  assert.equal(result.fontes.length, 0);
 });
 
-test("mapeia serviço fora do ar como indisponível", async () => {
-  await assert.rejects(
-    solicitarRespostaAssistente(requestPayload, {
-      env: { AI_SERVICE_URL: "http://127.0.0.1:8001" },
-      fetchImpl: async () => {
-        throw new TypeError("connect ECONNREFUSED 127.0.0.1:8001");
-      },
-    }),
-    (error) => error instanceof AssistenteServiceError
-      && error.status === 503
-      && error.code === "AI_SERVICE_UNAVAILABLE"
-      && !error.message.includes("ECONNREFUSED"),
-  );
-});
-
-test("rejeita JSON de sucesso fora do contrato estruturado", async () => {
-  await assert.rejects(
-    solicitarRespostaAssistente(requestPayload, {
-      env: { AI_SERVICE_URL: "http://127.0.0.1:8000" },
-      fetchImpl: async () => jsonResponse({ resposta: "incompleta" }),
-    }),
-    (error) => error instanceof AssistenteServiceError
-      && error.status === 502
-      && error.code === "AI_SERVICE_INVALID_RESPONSE",
-  );
-});
-
-test("cancela a chamada quando o timeout é excedido", async () => {
-  const keepEventLoopAlive = setTimeout(() => {}, 100);
-  try {
-    await assert.rejects(
-      solicitarRespostaAssistente(requestPayload, {
-        env: {
-          AI_SERVICE_URL: "http://127.0.0.1:8000",
-          AI_SERVICE_TIMEOUT_MS: "5",
-        },
-        fetchImpl: async (_url, { signal }) => new Promise((resolve, reject) => {
-          signal.addEventListener("abort", () => {
-            const error = new Error("aborted");
-            error.name = "AbortError";
-            reject(error);
-          }, { once: true });
-        }),
-      }),
-      (error) => error instanceof AssistenteServiceError
-        && error.status === 504
-        && error.code === "AI_SERVICE_TIMEOUT",
-    );
-  } finally {
-    clearTimeout(keepEventLoopAlive);
-  }
+test("informa indisponibilidade quando os semelhantes não possuem níveis dimensionais", async () => {
+  const result = await executarConsultaOrientada(request("comparar_municipios", []), {
+    listarSemelhantes: async () => [
+      { municipio_cod_ibge: 3548906, municipio_nome: "São Carlos", estado_sigla: "SP", is_current: true },
+    ],
+    listarNiveis: async () => [],
+  });
+  assert.match(result.limitacoes[0], /Não há dados suficientes/);
+  assert.equal(result.limitacoes.length, 1);
 });

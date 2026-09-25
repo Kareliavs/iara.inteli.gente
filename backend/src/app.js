@@ -3,7 +3,9 @@ const cors = require("cors");
 const authRoutes = require("./routes/authRoutes");
 const formularioRoutes = require("./routes/formularioRoutes");
 const municipiosRoutes = require("./routes/municipiosRoutes");
-const { isFeatureEnabled } = require("./config/featureFlags");
+const assistenteRoutes = require("./routes/assistenteRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const { createCsrfProtection } = require("./middleware/csrfMiddleware");
 
 const app = express();
 
@@ -12,7 +14,7 @@ app.disable("x-powered-by");
 
 const allowedOrigins = String(process.env.CORS_ORIGIN || "")
   .split(",")
-  .map((origin) => origin.trim())
+  .map((origin) => origin.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
 app.use(
@@ -37,12 +39,10 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: "32kb" }));
-if (isFeatureEnabled(process.env.AI_ASSISTANT_ENABLED)) {
-  // Carregamento tardio: com a flag desligada, a integração de IA permanece inativa.
-  const assistenteRoutes = require("./routes/assistenteRoutes");
-  app.use("/api", assistenteRoutes);
-}
+app.use(createCsrfProtection(allowedOrigins));
+app.use("/api", assistenteRoutes);
 app.use("/api", authRoutes);
+app.use("/api", adminRoutes);
 app.use("/api", formularioRoutes);
 app.use("/api", municipiosRoutes);
 

@@ -104,6 +104,28 @@ test("valida e normaliza e-mail institucional isoladamente", () => {
   assert.throws(() => validateInstitutionalEmail("gestor@gmail.com"));
 });
 
+test("aceita e-mail pessoal somente quando a exceção temporária está habilitada", () => {
+  const previousAllow = process.env.ALLOW_PERSONAL_EMAIL_REGISTRATION;
+  const previousMunicipio = process.env.PERSONAL_EMAIL_TEST_MUNICIPIO_COD_IBGE;
+  const previousNodeEnv = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = "development";
+    process.env.ALLOW_PERSONAL_EMAIL_REGISTRATION = "true";
+    process.env.PERSONAL_EMAIL_TEST_MUNICIPIO_COD_IBGE = "3548906";
+    assert.deepEqual(validateInstitutionalEmail("Pessoa@Gmail.com"), {
+      municipioCodIbge: 3548906,
+      usuarioLogin: "pessoa@gmail.com",
+    });
+  } finally {
+    if (previousAllow === undefined) delete process.env.ALLOW_PERSONAL_EMAIL_REGISTRATION;
+    else process.env.ALLOW_PERSONAL_EMAIL_REGISTRATION = previousAllow;
+    if (previousMunicipio === undefined) delete process.env.PERSONAL_EMAIL_TEST_MUNICIPIO_COD_IBGE;
+    else process.env.PERSONAL_EMAIL_TEST_MUNICIPIO_COD_IBGE = previousMunicipio;
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+  }
+});
+
 test("valida os limites da nova senha", () => {
   assert.equal(validateNewPassword("12345678"), "12345678");
   assert.throws(() => validateNewPassword("1234567"));

@@ -21,7 +21,15 @@ const DUMMY_PASSWORD_HASH = {
   salt: crypto.randomBytes(16),
 };
 const scryptAsync = promisify(crypto.scrypt);
+const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
 const MUNICIPAL_EMAIL_PATTERN = /^[a-z0-9](?:[a-z0-9._%+-]{0,62}[a-z0-9])?@([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.(ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to)\.gov\.br$/i;
+
+function personalEmailRegistrationEnabled() {
+  return (
+    process.env.NODE_ENV !== "production" &&
+    String(process.env.ALLOW_PERSONAL_EMAIL_REGISTRATION || "").toLowerCase() === "true"
+  );
+}
 
 function base64UrlEncode(value) {
   return Buffer.from(value).toString("base64url");
@@ -168,10 +176,24 @@ function registrationError(message) {
 function validateInstitutionalEmail(value) {
   const usuarioLogin = String(value || "").trim().toLowerCase();
   const emailMatch = usuarioLogin.match(MUNICIPAL_EMAIL_PATTERN);
-  if (usuarioLogin.length > 254 || !emailMatch) {
+  if (usuarioLogin.length > 254 || !EMAIL_PATTERN.test(usuarioLogin)) {
+    throw registrationError("Informe um endereço de e-mail válido");
+  }
+  if (!emailMatch && !personalEmailRegistrationEnabled()) {
     throw registrationError(
       "Use um e-mail institucional no formato usuario@cidade.estado.gov.br",
     );
+  }
+  if (!emailMatch) {
+    const municipioCodIbge = Number(process.env.PERSONAL_EMAIL_TEST_MUNICIPIO_COD_IBGE);
+    if (!Number.isSafeInteger(municipioCodIbge) || municipioCodIbge <= 0) {
+      const error = new Error(
+        "PERSONAL_EMAIL_TEST_MUNICIPIO_COD_IBGE deve identificar o município do cadastro de teste",
+      );
+      error.status = 503;
+      throw error;
+    }
+    return { municipioCodIbge, usuarioLogin };
   }
   return {
     estadoSigla: emailMatch[2].toUpperCase(),

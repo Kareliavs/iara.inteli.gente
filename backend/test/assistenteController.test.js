@@ -1,197 +1,97 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
-  MAX_QUESTION_LENGTH,
-  MIN_QUESTION_LENGTH,
-  createPerguntarController,
+  createConsultarController,
   validateRequestBody,
 } = require("../src/controllers/assistenteController");
 
-function createResponse() {
-  return {
-    body: null,
-    statusCode: 200,
-    json(body) {
-      this.body = body;
-      return this;
-    },
-    status(statusCode) {
-      this.statusCode = statusCode;
-      return this;
-    },
-  };
-}
-
 function validBody(overrides = {}) {
   return {
-    pergunta: "Como está o município?",
+    acao: "comparar_municipios",
     contexto: {
       municipio_cod_ibge: 3548906,
       dimensao_codigo: "economica",
       idioma: "pt",
+      indicador_ids: [1001, 1002, 1002],
     },
     ...overrides,
   };
 }
 
-test("valida e normaliza o contrato público do assistente", () => {
+function createResponse() {
+  return {
+    statusCode: 200,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+  };
+}
+
+test("valida o contrato fechado das consultas orientadas", () => {
   assert.deepEqual(validateRequestBody(validBody()), {
-    pergunta: "Como está o município?",
-    municipioCodIbge: 3548906,
-    dimensaoCodigo: "economica",
-    idioma: "pt",
+    acao: "comparar_municipios",
+    contexto: {
+      municipio_cod_ibge: 3548906,
+      dimensao_codigo: "economica",
+      idioma: "pt",
+      indicador_ids: [1001, 1002],
+    },
   });
 
-  assert.deepEqual(
-    validateRequestBody(validBody({
-      pergunta: "  Explique os indicadores  ",
-      contexto: {
-        municipio_cod_ibge: 3548906,
-        dimensao_codigo: null,
-        idioma: "fr",
-      },
-    })),
-    {
-      pergunta: "Explique os indicadores",
-      municipioCodIbge: 3548906,
-      dimensaoCodigo: null,
-      idioma: "fr",
-    },
-  );
-});
-
-test("rejeita campos desconhecidos e valores fora do contrato", () => {
-  const invalidBodies = [
+  for (const body of [
     null,
     {},
+    validBody({ acao: "pergunta_livre" }),
+    validBody({ acao: "comparar_media_regional" }),
     validBody({ campo_extra: true }),
-    validBody({ pergunta: "   " }),
-    validBody({ pergunta: "x".repeat(MIN_QUESTION_LENGTH - 1) }),
-    validBody({ pergunta: "x".repeat(MAX_QUESTION_LENGTH + 1) }),
-    validBody({ contexto: null }),
-    validBody({ contexto: { municipio_cod_ibge: "3548906", idioma: "pt" } }),
-    validBody({ contexto: { municipio_cod_ibge: 42, idioma: "pt" } }),
-    validBody({ contexto: { municipio_cod_ibge: 3548906, idioma: "de" } }),
-    validBody({
-      contexto: {
-        municipio_cod_ibge: 3548906,
-        dimensao_codigo: "dimensao_inexistente",
-        idioma: "pt",
-      },
-    }),
-    validBody({
-      contexto: {
-        municipio_cod_ibge: 3548906,
-        idioma: "pt",
-        municipio_nome: "Nome enviado pelo cliente",
-      },
-    }),
-  ];
-
-  invalidBodies.forEach((body) => {
-    assert.throws(() => validateRequestBody(body), (error) => error.status === 400);
-  });
+    validBody({ contexto: { municipio_cod_ibge: 42, idioma: "pt", indicador_ids: [] } }),
+    validBody({ contexto: { municipio_cod_ibge: 3548906, idioma: "de", indicador_ids: [] } }),
+    validBody({ contexto: { municipio_cod_ibge: 3548906, idioma: "pt", indicador_ids: ["1001"] } }),
+  ]) assert.throws(() => validateRequestBody(body), (error) => error.status === 400);
 });
 
-test("resolve o município canônico antes de chamar o serviço de IA", async () => {
-  let receivedCode = null;
-  let receivedPayload = null;
-  const controller = createPerguntarController({
-    buscarMunicipio: async (codigo) => {
-      receivedCode = codigo;
-      return {
-        municipio_cod_ibge: "3548906",
-        municipio_nome: "São Carlos",
-        estado_sigla: "SP",
-        municipio_regiao: "Sudeste",
-      };
-    },
-    solicitarResposta: async (payload) => {
-      receivedPayload = payload;
-      return {
-        resposta: "Resposta baseada em evidências.",
-        municipio: { nome: "Nome incorreto", codigo_ibge: 1, uf: "XX" },
-        indicadores_utilizados: ["3077"],
-        anos_utilizados: [2024],
-        fontes: [{ titulo: "IBGE", referencia: "Indicador 3077" }],
-        limitacoes: [],
-      };
+test("resolve o município canônico e executa apenas a ação validada", async () => {
+  let received = null;
+  const controller = createConsultarController({
+    buscarMunicipio: async () => municipio,
+    executarConsulta: async (payload) => {
+      received = payload;
+      return { resposta: "Resumo determinístico." };
     },
   });
+  const municipio = { municipio_cod_ibge: 3548906, municipio_nome: "São Carlos", estado_sigla: "SP", formulario_respondido: true };
   const res = createResponse();
 
   await controller({ body: validBody() }, res);
-
-  assert.equal(receivedCode, 3548906);
-  assert.deepEqual(receivedPayload, {
-    pergunta: "Como está o município?",
-    contexto: {
-      municipio_cod_ibge: 3548906,
-      municipio_nome: "São Carlos",
-      estado_sigla: "SP",
-      municipio_regiao: "Sudeste",
-      idioma: "pt",
-      dimensao_codigo: "economica",
-    },
-  });
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body.municipio, {
-    nome: "São Carlos",
-    codigo_ibge: 3548906,
-    uf: "SP",
-  });
+  assert.equal(received.acao, "comparar_municipios");
+  assert.equal(received.municipio.municipio_nome, "São Carlos");
 });
 
-test("omite a dimensão ausente do contexto enviado ao serviço", async () => {
-  let receivedPayload = null;
-  const controller = createPerguntarController({
+test("retorna 404 quando o município não existe", async () => {
+  const controller = createConsultarController({ buscarMunicipio: async () => null });
+  const res = createResponse();
+  await controller({ body: validBody() }, res);
+  assert.equal(res.statusCode, 404);
+  assert.deepEqual(res.body, { error: "Município não encontrado" });
+});
+
+test("retorna 403 quando o município não respondeu ao formulário", async () => {
+  let executed = false;
+  const controller = createConsultarController({
     buscarMunicipio: async () => ({
       municipio_cod_ibge: 3548906,
       municipio_nome: "São Carlos",
       estado_sigla: "SP",
-      municipio_regiao: null,
+      formulario_respondido: false,
     }),
-    solicitarResposta: async (payload) => {
-      receivedPayload = payload;
-      return {
-        resposta: "Resposta.",
-        municipio: null,
-        indicadores_utilizados: [],
-        anos_utilizados: [],
-        fontes: [],
-        limitacoes: [],
-      };
-    },
-  });
-  const res = createResponse();
-
-  await controller({
-    body: validBody({
-      contexto: {
-        municipio_cod_ibge: 3548906,
-        dimensao_codigo: null,
-        idioma: "pt",
-      },
-    }),
-  }, res);
-
-  assert.equal(res.statusCode, 200);
-  assert.equal(Object.hasOwn(receivedPayload.contexto, "dimensao_codigo"), false);
-});
-
-test("retorna 404 sem chamar a IA quando o município não existe", async () => {
-  let serviceCalled = false;
-  const controller = createPerguntarController({
-    buscarMunicipio: async () => null,
-    solicitarResposta: async () => {
-      serviceCalled = true;
-    },
+    executarConsulta: async () => { executed = true; },
   });
   const res = createResponse();
 
   await controller({ body: validBody() }, res);
 
-  assert.equal(res.statusCode, 404);
-  assert.deepEqual(res.body, { error: "Município não encontrado" });
-  assert.equal(serviceCalled, false);
+  assert.equal(res.statusCode, 403);
+  assert.equal(executed, false);
+  assert.match(res.body.error, /somente para municípios que responderam/i);
 });

@@ -1,20 +1,8 @@
-const {
-  buscarMunicipioPorCodigo,
-} = require("../repositories/municipiosRepository");
-const {
-  AssistenteServiceError,
-  solicitarRespostaAssistente,
-} = require("../services/assistenteService");
+const { buscarMunicipioPorCodigo } = require("../repositories/municipiosRepository");
+const { ACTIONS, executarConsultaOrientada } = require("../services/assistenteService");
 
-const MIN_QUESTION_LENGTH = 3;
-const MAX_QUESTION_LENGTH = 600;
-const DIMENSION_CODES = new Set([
-  "d1",
-  "economica",
-  "meio_ambiente",
-  "sociocultural",
-  "capacidades_institucionais",
-]);
+const ACTION_SET = new Set(ACTIONS);
+const DIMENSION_CODES = new Set(["d1", "economica", "meio_ambiente", "sociocultural", "capacidades_institucionais"]);
 const LANGUAGE_CODES = new Set(["pt", "en", "es", "fr"]);
 
 function isPlainObject(value) {
@@ -23,128 +11,45 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-function hasOnlyKeys(value, allowedKeys) {
-  return Object.keys(value).every((key) => allowedKeys.has(key));
-}
-
-function validationError(message) {
-  const error = new Error(message);
-  error.status = 400;
-  return error;
-}
+function validationError(message) { const error = new Error(message); error.status = 400; return error; }
+const hasOnlyKeys = (value, allowedKeys) => Object.keys(value).every((key) => allowedKeys.has(key));
 
 function validateRequestBody(body) {
-  if (!isPlainObject(body) || !hasOnlyKeys(body, new Set(["pergunta", "contexto"]))) {
-    throw validationError("Corpo da requisição inválido");
-  }
-
-  if (typeof body.pergunta !== "string") {
-    throw validationError("Pergunta é obrigatória");
-  }
-  const pergunta = body.pergunta.trim().replace(/\s+/g, " ");
-  if (pergunta.length < MIN_QUESTION_LENGTH) {
-    throw validationError(`Pergunta deve possuir ao menos ${MIN_QUESTION_LENGTH} caracteres`);
-  }
-  if (pergunta.length > MAX_QUESTION_LENGTH) {
-    throw validationError(`Pergunta deve possuir no máximo ${MAX_QUESTION_LENGTH} caracteres`);
-  }
-
-  if (
-    !isPlainObject(body.contexto)
-    || !hasOnlyKeys(
-      body.contexto,
-      new Set(["municipio_cod_ibge", "dimensao_codigo", "idioma"]),
-    )
-  ) {
-    throw validationError("Contexto da requisição inválido");
-  }
-
+  if (!isPlainObject(body) || !hasOnlyKeys(body, new Set(["acao", "contexto"]))) throw validationError("Corpo da requisição inválido");
+  if (typeof body.acao !== "string" || !ACTION_SET.has(body.acao)) throw validationError("Consulta orientada inválida");
+  if (!isPlainObject(body.contexto) || !hasOnlyKeys(body.contexto, new Set(["municipio_cod_ibge", "dimensao_codigo", "idioma", "indicador_ids"]))) throw validationError("Contexto da requisição inválido");
   const municipioCodIbge = body.contexto.municipio_cod_ibge;
-  if (
-    !Number.isInteger(municipioCodIbge)
-    || municipioCodIbge < 1_000_000
-    || municipioCodIbge > 9_999_999
-  ) {
-    throw validationError("Código IBGE inválido");
-  }
-
+  if (!Number.isInteger(municipioCodIbge) || municipioCodIbge < 1_000_000 || municipioCodIbge > 9_999_999) throw validationError("Código IBGE inválido");
   const idioma = body.contexto.idioma;
-  if (typeof idioma !== "string" || !LANGUAGE_CODES.has(idioma)) {
-    throw validationError("Idioma inválido");
-  }
-
+  if (typeof idioma !== "string" || !LANGUAGE_CODES.has(idioma)) throw validationError("Idioma inválido");
   const dimensaoCodigo = body.contexto.dimensao_codigo;
-  if (
-    dimensaoCodigo !== undefined
-    && dimensaoCodigo !== null
-    && (typeof dimensaoCodigo !== "string" || !DIMENSION_CODES.has(dimensaoCodigo))
-  ) {
-    throw validationError("Dimensão inválida");
-  }
-
-  return {
-    pergunta,
-    municipioCodIbge,
-    idioma,
-    dimensaoCodigo: dimensaoCodigo || null,
-  };
+  if (dimensaoCodigo !== undefined && dimensaoCodigo !== null && (typeof dimensaoCodigo !== "string" || !DIMENSION_CODES.has(dimensaoCodigo))) throw validationError("Dimensão inválida");
+  const indicatorIds = body.contexto.indicador_ids;
+  if (!Array.isArray(indicatorIds) || indicatorIds.length > 135 || indicatorIds.some((id) => !Number.isInteger(id) || id < 1 || id > 9999)) throw validationError("Lista de indicadores inválida");
+  return { acao: body.acao, contexto: { municipio_cod_ibge: municipioCodIbge, dimensao_codigo: dimensaoCodigo || null, idioma, indicador_ids: Array.from(new Set(indicatorIds)) } };
 }
 
-function createPerguntarController({
-  buscarMunicipio = buscarMunicipioPorCodigo,
-  solicitarResposta = solicitarRespostaAssistente,
-} = {}) {
-  return async function perguntar(req, res) {
+function createConsultarController({ buscarMunicipio = buscarMunicipioPorCodigo, executarConsulta = executarConsultaOrientada } = {}) {
+  return async function consultar(req, res) {
     try {
       const input = validateRequestBody(req.body);
-      const municipio = await buscarMunicipio(input.municipioCodIbge);
-      if (!municipio) {
-        return res.status(404).json({ error: "Município não encontrado" });
+      const municipio = await buscarMunicipio(input.contexto.municipio_cod_ibge);
+      if (!municipio) return res.status(404).json({ error: "Município não encontrado" });
+      const formularioRespondido = municipio.formulario_respondido === true
+        || municipio.formulario_respondido === "true";
+      if (!formularioRespondido) {
+        return res.status(403).json({
+          error: "O Assistente Municipal está disponível somente para municípios que responderam ao formulário.",
+        });
       }
-
-      const contexto = {
-        municipio_cod_ibge: input.municipioCodIbge,
-        municipio_nome: municipio.municipio_nome,
-        estado_sigla: municipio.estado_sigla,
-        municipio_regiao: municipio.municipio_regiao || null,
-        idioma: input.idioma,
-        ...(input.dimensaoCodigo
-          ? { dimensao_codigo: input.dimensaoCodigo }
-          : {}),
-      };
-      const resultado = await solicitarResposta({
-        pergunta: input.pergunta,
-        contexto,
-      });
-
-      return res.json({
-        ...resultado,
-        municipio: {
-          nome: municipio.municipio_nome,
-          codigo_ibge: input.municipioCodIbge,
-          uf: municipio.estado_sigla,
-        },
-      });
+      return res.json(await executarConsulta({ ...input, municipio }));
     } catch (error) {
-      if (error.status === 400) {
-        return res.status(400).json({ error: error.message });
-      }
-      if (error instanceof AssistenteServiceError) {
-        console.error("Falha controlada no serviço de IA:", error.code);
-        return res.status(error.status).json({ error: error.message });
-      }
-      console.error("Erro ao consultar o assistente municipal:", error);
-      return res.status(500).json({ error: "Erro ao consultar o assistente municipal" });
+      if (error.status === 400) return res.status(400).json({ error: error.message });
+      console.error("Erro ao executar consulta municipal orientada:", error);
+      return res.status(500).json({ error: "Erro ao executar consulta municipal" });
     }
   };
 }
 
-const perguntar = createPerguntarController();
-
-module.exports = {
-  MAX_QUESTION_LENGTH,
-  MIN_QUESTION_LENGTH,
-  createPerguntarController,
-  perguntar,
-  validateRequestBody,
-};
+const consultar = createConsultarController();
+module.exports = { createConsultarController, consultar, validateRequestBody };

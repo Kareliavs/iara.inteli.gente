@@ -221,6 +221,36 @@ async function listarMunicipios() {
       WHERE variavel_sigla = 'POP_TOT'
       ORDER BY municipio_cod_ibge, ano DESC NULLS LAST
     ),
+    indicadores_formulario_recentes AS (
+      SELECT DISTINCT ON (mai.municipio_cod_ibge, mai.indicador_referencia)
+        mai.municipio_cod_ibge,
+        mai.indicador_referencia,
+        mai.indicador_valor_textual
+      FROM bd.municipio_apresenta_indicador mai
+      WHERE mai.indicador_referencia IN (
+        3049, 3076, 4012, 4006, 3123, 4040, 3006, 3125, 4004,
+        3048, 3042, 4014, 3056, 3113, 3043, 3069, 6003, 6005,
+        6006, 6021, 6024, 6048, 6009, 6054, 6035, 6002, 6011,
+        6017, 6019
+      )
+      ORDER BY
+        mai.municipio_cod_ibge,
+        mai.indicador_referencia,
+        mai.ano DESC NULLS LAST
+    ),
+    formularios_nao_respondidos AS (
+      SELECT
+        municipio_cod_ibge,
+        COUNT(*) = 29
+          AND BOOL_AND(
+            COALESCE(
+              unaccent(lower(btrim(indicador_valor_textual))) = 'sem resposta do formulario',
+              false
+            )
+          ) AS formulario_nao_respondido
+      FROM indicadores_formulario_recentes
+      GROUP BY municipio_cod_ibge
+    ),
     ${REDE_INFLUENCIA_CTE}
     SELECT
       m.municipio_cod_ibge,
@@ -232,7 +262,8 @@ async function listarMunicipios() {
       COALESCE(pm.pop_tot, 0) AS populacao_total,
       mn.municipio_nivel,
       ri.rede_influencia,
-      ri.rede_influencia_nivel
+      ri.rede_influencia_nivel,
+      COALESCE(fnr.formulario_nao_respondido, false) AS formulario_nao_respondido
     FROM bd.municipio m
     LEFT JOIN pop_municipio pm
       ON pm.municipio_cod_ibge = m.municipio_cod_ibge
@@ -240,6 +271,8 @@ async function listarMunicipios() {
       ON mn.municipio_cod_ibge = m.municipio_cod_ibge
     LEFT JOIN rede_influencia_indicador ri
       ON ri.municipio_cod_ibge = m.municipio_cod_ibge
+    LEFT JOIN formularios_nao_respondidos fnr
+      ON fnr.municipio_cod_ibge = m.municipio_cod_ibge
     ORDER BY m.municipio_nome
   `);
 
@@ -306,13 +339,32 @@ async function buscarMunicipioPorCodigo(municipioCodIbge) {
   const result = await pool.query(
     `
     SELECT
-      municipio_cod_ibge,
-      municipio_nome,
-      estado_nome,
-      estado_sigla,
-      municipio_regiao
-    FROM bd.municipio
-    WHERE municipio_cod_ibge = $1
+      m.municipio_cod_ibge,
+      m.municipio_nome,
+      m.estado_nome,
+      m.estado_sigla,
+      m.municipio_regiao,
+      EXISTS (
+        SELECT 1
+        FROM (
+          SELECT DISTINCT ON (mai.indicador_referencia)
+            mai.indicador_referencia,
+            mai.indicador_valor_textual
+          FROM bd.municipio_apresenta_indicador mai
+          WHERE mai.municipio_cod_ibge = m.municipio_cod_ibge
+            AND mai.indicador_referencia IN (
+              3049, 3076, 4012, 4006, 3123, 4040, 3006, 3125, 4004,
+              3048, 3042, 4014, 3056, 3113, 3043, 3069, 6003, 6005,
+              6006, 6021, 6024, 6048, 6009, 6054, 6035, 6002, 6011,
+              6017, 6019
+            )
+          ORDER BY mai.indicador_referencia, mai.ano DESC NULLS LAST
+        ) formulario
+        WHERE NULLIF(btrim(formulario.indicador_valor_textual), '') IS NOT NULL
+          AND unaccent(lower(btrim(formulario.indicador_valor_textual))) <> 'sem resposta do formulario'
+      ) AS formulario_respondido
+    FROM bd.municipio m
+    WHERE m.municipio_cod_ibge = $1
     LIMIT 1
     `,
     [municipioCodIbge]
@@ -472,52 +524,113 @@ async function listarIndicadoresMunicipio(municipioCodIbge) {
   return result.rows;
 }
 
-async function obterResumoPontuacaoDimensao(municipioCodIbge, indicadorReferencias) {
-  if (!Array.isArray(indicadorReferencias) || indicadorReferencias.length === 0) {
-    return null;
-  }
+async function listarNiveisIndicadoresMunicipios(municipioCodigos, indicadorReferencias) {
+  const codigos = Array.from(new Set((Array.isArray(municipioCodigos) ? municipioCodigos : [])
+    .map(Number)
+    .filter(Number.isInteger)));
+  const referencias = Array.from(new Set((Array.isArray(indicadorReferencias) ? indicadorReferencias : [])
+    .map(Number)
+    .filter(Number.isInteger)));
 
+  if (codigos.length === 0 || referencias.length === 0) return [];
+
+  const result = await pool.query(
+    `
+    WITH indicadores_recentes AS (
+      SELECT
+        municipio_cod_ibge,
+        indicador_referencia,
+        indicador_nivel,
+        ROW_NUMBER() OVER (
+          PARTITION BY municipio_cod_ibge, indicador_referencia
+          ORDER BY ano DESC NULLS LAST
+        ) AS rn
+      FROM bd.municipio_apresenta_indicador
+      WHERE municipio_cod_ibge = ANY($1::int[])
+        AND indicador_referencia = ANY($2::int[])
+        AND indicador_nivel BETWEEN 1 AND 7
+    )
+    SELECT
+      municipio_cod_ibge,
+      indicador_referencia,
+      indicador_nivel
+    FROM indicadores_recentes
+    WHERE rn = 1
+    ORDER BY municipio_cod_ibge, indicador_referencia
+    `,
+    [codigos, referencias]
+  );
+
+  return result.rows;
+}
+
+// Perf note: same caching rationale as _getCandidatosPool above — the
+// per-municipio score list only depends on the indicator set, not on which
+// municipio is being viewed, so it's cached and the target-relative
+// aggregation (regional/national average) is computed cheaply per call.
+const _municipioScoresCache = new Map();
+
+async function _getMunicipioScores(indicadorReferencias) {
+  const cacheKey = JSON.stringify(indicadorReferencias);
+  if (_municipioScoresCache.has(cacheKey)) {
+    return _municipioScoresCache.get(cacheKey);
+  }
+  const promise = _computeMunicipioScores(indicadorReferencias);
+  _municipioScoresCache.set(cacheKey, promise);
+  return promise;
+}
+
+async function _computeMunicipioScores(indicadorReferencias) {
   const query = `
-    WITH target AS (
-      SELECT municipio_regiao
-      FROM bd.municipio
-      WHERE municipio_cod_ibge = $1
-      LIMIT 1
-    ),
-    latest AS (
+    WITH latest AS (
       SELECT DISTINCT ON (mai.municipio_cod_ibge, mai.indicador_referencia)
         mai.municipio_cod_ibge,
         mai.indicador_referencia,
         mai.indicador_nivel::numeric AS indicador_nivel
       FROM bd.municipio_apresenta_indicador mai
-      WHERE mai.indicador_referencia = ANY($2::int[])
+      WHERE mai.indicador_referencia = ANY($1::int[])
         AND mai.indicador_nivel IS NOT NULL
       ORDER BY mai.municipio_cod_ibge, mai.indicador_referencia, mai.ano DESC NULLS LAST
-    ),
-    municipio_scores AS (
-      SELECT
-        m.municipio_cod_ibge,
-        m.municipio_regiao,
-        ROUND((AVG(l.indicador_nivel) / 7.0) * 100)::int AS score
-      FROM latest l
-      JOIN bd.municipio m
-        ON m.municipio_cod_ibge = l.municipio_cod_ibge
-      WHERE l.indicador_nivel BETWEEN 1 AND 7
-      GROUP BY m.municipio_cod_ibge, m.municipio_regiao
     )
     SELECT
-      ROUND(AVG(ms.score) FILTER (WHERE ms.municipio_regiao = target.municipio_regiao))::int
-        AS media_regional,
-      COUNT(*) FILTER (WHERE ms.municipio_regiao = target.municipio_regiao)::int
-        AS municipios_regiao,
-      ROUND(AVG(ms.score))::int AS media_nacional,
-      COUNT(*)::int AS municipios_nacional
-    FROM municipio_scores ms
-    CROSS JOIN target
+      m.municipio_cod_ibge,
+      m.municipio_regiao,
+      ROUND((AVG(l.indicador_nivel) / 7.0) * 100)::int AS score
+    FROM latest l
+    JOIN bd.municipio m
+      ON m.municipio_cod_ibge = l.municipio_cod_ibge
+    WHERE l.indicador_nivel BETWEEN 1 AND 7
+    GROUP BY m.municipio_cod_ibge, m.municipio_regiao
   `;
+  const result = await pool.query(query, [indicadorReferencias]);
+  return result.rows;
+}
 
-  const result = await pool.query(query, [municipioCodIbge, indicadorReferencias]);
-  return result.rows[0] || null;
+async function obterResumoPontuacaoDimensao(municipioCodIbge, indicadorReferencias) {
+  if (!Array.isArray(indicadorReferencias) || indicadorReferencias.length === 0) {
+    return null;
+  }
+
+  const [scores, targetRows] = await Promise.all([
+    _getMunicipioScores(indicadorReferencias),
+    pool.query(
+      "SELECT municipio_regiao FROM bd.municipio WHERE municipio_cod_ibge = $1 LIMIT 1",
+      [municipioCodIbge]
+    ),
+  ]);
+  const targetRegiao = targetRows.rows[0]?.municipio_regiao ?? null;
+
+  const regiaoScores = scores.filter((s) => s.municipio_regiao === targetRegiao);
+  const avg = (arr) => (arr.length ? arr.reduce((sum, s) => sum + s.score, 0) / arr.length : null);
+  const media_regional = targetRegiao !== null && regiaoScores.length ? Math.round(avg(regiaoScores)) : null;
+  const media_nacional = scores.length ? Math.round(avg(scores)) : null;
+
+  return {
+    media_regional,
+    municipios_regiao: regiaoScores.length,
+    media_nacional,
+    municipios_nacional: scores.length,
+  };
 }
 
 async function obterResumoPopulacao() {
@@ -657,10 +770,24 @@ async function listarSerieVariavelMunicipio(municipioCodIbge, variavelSigla) {
   return result.rows;
 }
 
-async function listarMunicipiosSemelhantes(municipioCodIbge, limit = 6, indicadorReferencias = []) {
-  const scoreIndicatorFilter = Array.isArray(indicadorReferencias)
-    ? indicadorReferencias.filter((value) => Number.isInteger(Number(value))).map(Number)
-    : [];
+// Perf note: the candidate pool (population/PIB/IDHM/GINI/score for every
+// municipio) only depends on the indicator filter, not on which municipio is
+// being viewed. It is cached per filter so repeated calls (e.g. static-site
+// generation across all 5571 municipios) don't recompute the same
+// full-table scan thousands of times. Output is identical either way.
+const _candidatosPoolCache = new Map();
+
+async function _getCandidatosPool(scoreIndicatorFilter) {
+  const cacheKey = JSON.stringify(scoreIndicatorFilter);
+  if (_candidatosPoolCache.has(cacheKey)) {
+    return _candidatosPoolCache.get(cacheKey);
+  }
+  const promise = _computeCandidatosPool(scoreIndicatorFilter);
+  _candidatosPoolCache.set(cacheKey, promise);
+  return promise;
+}
+
+async function _computeCandidatosPool(scoreIndicatorFilter) {
   const query = `
     WITH pop_municipio AS (
       SELECT DISTINCT ON (municipio_cod_ibge)
@@ -699,8 +826,8 @@ async function listarMunicipiosSemelhantes(municipioCodIbge, limit = 6, indicado
         ) AS rn
       FROM bd.municipio_apresenta_indicador
       WHERE (
-        cardinality($2::int[]) = 0
-        OR indicador_referencia = ANY($2::int[])
+        cardinality($1::int[]) = 0
+        OR indicador_referencia = ANY($1::int[])
       )
     ),
     score_municipio AS (
@@ -710,155 +837,137 @@ async function listarMunicipiosSemelhantes(municipioCodIbge, limit = 6, indicado
       FROM indicadores_nivel_latest
       WHERE rn = 1
       GROUP BY municipio_cod_ibge
-    ),
-    target AS (
-      SELECT
-        m.municipio_cod_ibge,
-        m.municipio_regiao,
-        COALESCE(
-          NULLIF(to_jsonb(m) ->> 'municipio_rede_influencia', ''),
-          NULLIF(to_jsonb(m) ->> 'rede_influencia', ''),
-          NULLIF(to_jsonb(m) ->> 'rede_de_influencia', ''),
-          NULLIF(to_jsonb(m) ->> 'hierarquia_urbana', ''),
-          NULLIF(to_jsonb(m) ->> 'municipio_hierarquia_urbana', '')
-        ) AS rede_influencia,
-        pm.pop_tot,
-        vp.pib_pc,
-        vp.idhm,
-        vp.gini
-      FROM bd.municipio m
-      LEFT JOIN pop_municipio pm
-        ON pm.municipio_cod_ibge = m.municipio_cod_ibge
-      LEFT JOIN variaveis_pivot vp
-        ON vp.municipio_cod_ibge = m.municipio_cod_ibge
-      WHERE m.municipio_cod_ibge = $1
-      LIMIT 1
-    ),
-    candidatos AS (
-      SELECT
-        m.municipio_cod_ibge,
-        m.municipio_nome,
-        m.estado_sigla,
-        m.municipio_regiao,
-        COALESCE(
-          NULLIF(to_jsonb(m) ->> 'municipio_rede_influencia', ''),
-          NULLIF(to_jsonb(m) ->> 'rede_influencia', ''),
-          NULLIF(to_jsonb(m) ->> 'rede_de_influencia', ''),
-          NULLIF(to_jsonb(m) ->> 'hierarquia_urbana', ''),
-          NULLIF(to_jsonb(m) ->> 'municipio_hierarquia_urbana', '')
-        ) AS rede_influencia,
-        pm.pop_tot,
-        vp.pib_pc,
-        vp.idhm,
-        vp.gini,
-        sm.nivel_medio,
-        (m.municipio_cod_ibge = t.municipio_cod_ibge) AS is_current,
-        t.rede_influencia AS target_rede_influencia,
-        t.pop_tot AS target_pop_tot,
-        t.pib_pc AS target_pib_pc,
-        t.idhm AS target_idhm,
-        t.gini AS target_gini
-      FROM target t
-      JOIN bd.municipio m
-        ON TRUE
-      LEFT JOIN pop_municipio pm
-        ON pm.municipio_cod_ibge = m.municipio_cod_ibge
-      LEFT JOIN variaveis_pivot vp
-        ON vp.municipio_cod_ibge = m.municipio_cod_ibge
-      LEFT JOIN score_municipio sm
-        ON sm.municipio_cod_ibge = m.municipio_cod_ibge
-    ),
-    candidatos_filtrados AS (
-      SELECT
-        c.*,
-        (c.rede_influencia IS NOT NULL AND c.rede_influencia = c.target_rede_influencia) AS same_rede
-      FROM candidatos c
-    ),
-    distancias AS (
-      SELECT
-        c.*,
-        CASE
-          WHEN c.pop_tot IS NOT NULL AND c.target_pop_tot IS NOT NULL
-            THEN ABS(LN((c.pop_tot + 1) / (c.target_pop_tot + 1)))
-          ELSE NULL
-        END AS dist_pop,
-        CASE
-          WHEN c.pib_pc IS NOT NULL AND c.target_pib_pc IS NOT NULL
-            THEN ABS(LN((c.pib_pc + 1) / (c.target_pib_pc + 1)))
-          ELSE NULL
-        END AS dist_pib_pc,
-        CASE
-          WHEN c.idhm IS NOT NULL AND c.target_idhm IS NOT NULL
-            THEN ABS(c.idhm - c.target_idhm) / 0.2
-          ELSE NULL
-        END AS dist_idhm,
-        CASE
-          WHEN c.gini IS NOT NULL AND c.target_gini IS NOT NULL
-            THEN ABS(c.gini - c.target_gini) / 0.2
-          ELSE NULL
-        END AS dist_gini
-      FROM candidatos_filtrados c
     )
     SELECT
-      d.municipio_cod_ibge,
-      d.municipio_nome,
-      d.estado_sigla,
-      d.municipio_regiao,
-      d.rede_influencia,
-      d.pop_tot,
-      d.target_pop_tot,
-      d.pib_pc,
-      d.target_pib_pc,
-      d.idhm,
-      d.target_idhm,
-      d.gini,
-      d.target_gini,
-      COALESCE(ROUND((d.nivel_medio / 7.0) * 100), 0)::int AS score,
-      d.is_current,
-      d.target_rede_influencia AS rede_influencia_referencia,
-      CASE
-        WHEN d.target_rede_influencia IS NOT NULL
-          THEN 'somente_rede_influencia'
-        ELSE 'rede_influencia_indisponivel'
-      END AS criterio_aplicado,
-      ROUND(
-        GREATEST(
-          0,
-          LEAST(
-            100,
-            100 * (
-              1 - LEAST(
-                1,
-                (
-                  COALESCE(d.dist_pop * 0.5, 0)
-                  + COALESCE(d.dist_pib_pc * 0.25, 0)
-                  + COALESCE(d.dist_idhm * 0.15, 0)
-                  + COALESCE(d.dist_gini * 0.10, 0)
-                )
-                /
-                NULLIF(
-                  (CASE WHEN d.dist_pop IS NOT NULL THEN 0.5 ELSE 0 END)
-                  + (CASE WHEN d.dist_pib_pc IS NOT NULL THEN 0.25 ELSE 0 END)
-                  + (CASE WHEN d.dist_idhm IS NOT NULL THEN 0.15 ELSE 0 END)
-                  + (CASE WHEN d.dist_gini IS NOT NULL THEN 0.10 ELSE 0 END),
-                  0
-                )
-              )
-            )
-          )
-        ),
-        2
-      ) AS similaridade_score
-    FROM distancias d
-    ORDER BY
-      CASE WHEN d.is_current THEN 0 ELSE 1 END,
-      similaridade_score DESC NULLS LAST,
-      d.nivel_medio DESC NULLS LAST,
-      d.municipio_nome ASC
+      m.municipio_cod_ibge,
+      m.municipio_nome,
+      m.estado_sigla,
+      m.municipio_regiao,
+      COALESCE(
+        NULLIF(to_jsonb(m) ->> 'municipio_rede_influencia', ''),
+        NULLIF(to_jsonb(m) ->> 'rede_influencia', ''),
+        NULLIF(to_jsonb(m) ->> 'rede_de_influencia', ''),
+        NULLIF(to_jsonb(m) ->> 'hierarquia_urbana', ''),
+        NULLIF(to_jsonb(m) ->> 'municipio_hierarquia_urbana', '')
+      ) AS rede_influencia,
+      pm.pop_tot,
+      vp.pib_pc,
+      vp.idhm,
+      vp.gini,
+      sm.nivel_medio
+    FROM bd.municipio m
+    LEFT JOIN pop_municipio pm
+      ON pm.municipio_cod_ibge = m.municipio_cod_ibge
+    LEFT JOIN variaveis_pivot vp
+      ON vp.municipio_cod_ibge = m.municipio_cod_ibge
+    LEFT JOIN score_municipio sm
+      ON sm.municipio_cod_ibge = m.municipio_cod_ibge
   `;
+  const result = await pool.query(query, [scoreIndicatorFilter]);
+  return result.rows;
+}
 
-  const result = await pool.query(query, [municipioCodIbge, scoreIndicatorFilter]);
-  const rows = result.rows;
+async function listarMunicipiosSemelhantes(municipioCodIbge, limit = 6, indicadorReferencias = []) {
+  const scoreIndicatorFilter = Array.isArray(indicadorReferencias)
+    ? indicadorReferencias.filter((value) => Number.isInteger(Number(value))).map(Number)
+    : [];
+
+  const pool_rows = await _getCandidatosPool(scoreIndicatorFilter);
+  const targetBase = pool_rows.find(
+    (r) => String(r.municipio_cod_ibge) === String(municipioCodIbge)
+  );
+  const targetPopTot = targetBase?.pop_tot ?? null;
+  const targetPibPc = targetBase?.pib_pc ?? null;
+  const targetIdhm = targetBase?.idhm ?? null;
+  const targetGini = targetBase?.gini ?? null;
+  const targetRedeInfluencia = targetBase?.rede_influencia ?? null;
+
+  const distRow = (c) => {
+    const isCurrent = String(c.municipio_cod_ibge) === String(municipioCodIbge);
+    const numOrNull = (v) => (v === null || v === undefined ? null : Number(v));
+    const popTot = numOrNull(c.pop_tot);
+    const pibPc = numOrNull(c.pib_pc);
+    const idhm = numOrNull(c.idhm);
+    const gini = numOrNull(c.gini);
+    const tPop = numOrNull(targetPopTot);
+    const tPib = numOrNull(targetPibPc);
+    const tIdhm = numOrNull(targetIdhm);
+    const tGini = numOrNull(targetGini);
+
+    const dist_pop =
+      popTot !== null && tPop !== null ? Math.abs(Math.log((popTot + 1) / (tPop + 1))) : null;
+    const dist_pib_pc =
+      pibPc !== null && tPib !== null ? Math.abs(Math.log((pibPc + 1) / (tPib + 1))) : null;
+    const dist_idhm = idhm !== null && tIdhm !== null ? Math.abs(idhm - tIdhm) / 0.2 : null;
+    const dist_gini = gini !== null && tGini !== null ? Math.abs(gini - tGini) / 0.2 : null;
+
+    const weightSum =
+      (dist_pop !== null ? 0.5 : 0) +
+      (dist_pib_pc !== null ? 0.25 : 0) +
+      (dist_idhm !== null ? 0.15 : 0) +
+      (dist_gini !== null ? 0.1 : 0);
+    const weightedDist =
+      (dist_pop !== null ? dist_pop * 0.5 : 0) +
+      (dist_pib_pc !== null ? dist_pib_pc * 0.25 : 0) +
+      (dist_idhm !== null ? dist_idhm * 0.15 : 0) +
+      (dist_gini !== null ? dist_gini * 0.1 : 0);
+    const ratio = weightSum > 0 ? weightedDist / weightSum : null;
+    const similaridade_score =
+      ratio === null
+        ? null
+        : Math.round(
+            Math.max(0, Math.min(100, 100 * (1 - Math.min(1, ratio)))) * 100
+          ) / 100;
+
+    const nivelMedio = c.nivel_medio === null || c.nivel_medio === undefined ? null : Number(c.nivel_medio);
+    const score = Math.round(((nivelMedio || 0) / 7.0) * 100) || 0;
+
+    return {
+      municipio_cod_ibge: c.municipio_cod_ibge,
+      municipio_nome: c.municipio_nome,
+      estado_sigla: c.estado_sigla,
+      municipio_regiao: c.municipio_regiao,
+      rede_influencia: c.rede_influencia,
+      pop_tot: c.pop_tot,
+      target_pop_tot: targetPopTot,
+      pib_pc: c.pib_pc,
+      target_pib_pc: targetPibPc,
+      idhm: c.idhm,
+      target_idhm: targetIdhm,
+      gini: c.gini,
+      target_gini: targetGini,
+      score,
+      is_current: isCurrent,
+      rede_influencia_referencia: targetRedeInfluencia,
+      criterio_aplicado:
+        targetRedeInfluencia !== null ? "somente_rede_influencia" : "rede_influencia_indisponivel",
+      nivel_medio: nivelMedio,
+      similaridade_score,
+    };
+  };
+
+  const rows = pool_rows
+    .map(distRow)
+    .sort((a, b) => {
+      const aCur = a.is_current ? 0 : 1;
+      const bCur = b.is_current ? 0 : 1;
+      if (aCur !== bCur) return aCur - bCur;
+      const aSim = a.similaridade_score;
+      const bSim = b.similaridade_score;
+      if (aSim !== bSim) {
+        if (aSim === null) return 1;
+        if (bSim === null) return -1;
+        return bSim - aSim;
+      }
+      const aNiv = a.nivel_medio;
+      const bNiv = b.nivel_medio;
+      if (aNiv !== bNiv) {
+        if (aNiv === null) return 1;
+        if (bNiv === null) return -1;
+        return bNiv - aNiv;
+      }
+      return String(a.municipio_nome).localeCompare(String(b.municipio_nome));
+    });
 
   const targetHierarchy = getHierarchyByMunicipioCod(municipioCodIbge);
   const targetHierarchy3 = (targetHierarchy?.hierarquia3 || "").trim().toUpperCase();
@@ -1096,6 +1205,7 @@ module.exports = {
   buscarMunicipioPorSlug,
   buscarVariaveisMunicipio,
   listarIndicadoresMunicipio,
+  listarNiveisIndicadoresMunicipios,
   obterResumoPontuacaoDimensao,
   obterResumoPopulacao,
   obterResumoMunicipios,

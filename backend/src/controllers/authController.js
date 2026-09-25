@@ -7,7 +7,6 @@ const {
   criarRedefinicaoSenha,
   criarSessao,
   registrarEventoAutenticacao,
-  removerCadastroPendente,
   renovarCadastroPendente,
   revogarSessao,
 } = require("../repositories/usuariosRepository");
@@ -22,10 +21,8 @@ const {
   validateRegistrationInput,
   verifyPassword,
 } = require("../services/authService");
-const {
-  sendAccountConfirmationEmail,
-  sendPasswordResetEmail,
-} = require("../services/emailService");
+const { assertEmailDeliveryConfigured } = require("../services/emailService");
+const { createEncryptedEmailJob } = require("../services/emailOutboxCrypto");
 const {
   clearSessionCookie,
   getSessionToken,
@@ -50,6 +47,11 @@ function eventMetadata(req, overrides = {}) {
     userAgent: req.headers["user-agent"] || null,
     ...overrides,
   };
+}
+
+function emailLanguage(req) {
+  const language = String(req.body?.language || "pt").toLowerCase();
+  return ["pt", "en", "fr", "es"].includes(language) ? language : "pt";
 }
 
 async function establishSession(res, usuario, rememberAccess = false) {
@@ -115,6 +117,7 @@ async function login(req, res) {
 
 async function register(req, res) {
   try {
+    assertEmailDeliveryConfigured();
     const input = validateRegistrationInput({
       nome: req.body?.nome,
       login: req.body?.email,
@@ -122,24 +125,21 @@ async function register(req, res) {
     });
     const confirmationToken = createEmailConfirmationToken();
     const pending = await criarCadastroPendente({
+      emailJob: createEncryptedEmailJob({
+        email: input.usuarioLogin,
+        language: emailLanguage(req),
+        name: input.usuarioNome,
+        token: confirmationToken,
+        type: "ACCOUNT_CONFIRMATION",
+      }),
       estadoSigla: input.estadoSigla,
+      municipioCodIbge: input.municipioCodIbge,
       municipioDominio: input.municipioDominio,
       tokenHash: hashEmailConfirmationToken(confirmationToken),
       usuarioLogin: input.usuarioLogin,
       usuarioNome: input.usuarioNome,
       usuarioSenha: await hashPassword(input.senha),
     });
-
-    try {
-      await sendAccountConfirmationEmail({
-        email: input.usuarioLogin,
-        name: input.usuarioNome,
-        token: confirmationToken,
-      });
-    } catch (error) {
-      await removerCadastroPendente(pending.cadastroId);
-      throw error;
-    }
 
     await registrarEventoAutenticacao(
       eventMetadata(req, {
@@ -149,7 +149,7 @@ async function register(req, res) {
     );
     return res.status(202).json({
       email: input.usuarioLogin,
-      message: "Enviamos um link de confirmação para o seu e-mail",
+      message: "O link de confirmação foi colocado na fila de envio",
       municipio: `${pending.municipio_nome} - ${pending.estado_sigla}`,
     });
   } catch (error) {
@@ -159,11 +159,19 @@ async function register(req, res) {
 
 async function resendRegistrationConfirmation(req, res) {
   try {
+    assertEmailDeliveryConfigured();
     const { usuarioLogin } = validateInstitutionalEmail(req.body?.email);
     const confirmationToken = createEmailConfirmationToken();
     const pending = await renovarCadastroPendente(
       usuarioLogin,
       hashEmailConfirmationToken(confirmationToken),
+      (pendingUser) => createEncryptedEmailJob({
+        email: pendingUser.usuario_login,
+        language: emailLanguage(req),
+        name: pendingUser.usuario_nome,
+        token: confirmationToken,
+        type: "ACCOUNT_CONFIRMATION",
+      }),
     );
     await registrarEventoAutenticacao(
       eventMetadata(req, {
@@ -171,13 +179,6 @@ async function resendRegistrationConfirmation(req, res) {
         usuarioLogin,
       }),
     );
-    if (pending) {
-      await sendAccountConfirmationEmail({
-        email: pending.usuario_login,
-        name: pending.usuario_nome,
-        token: confirmationToken,
-      });
-    }
     return res.status(202).json({
       message: "Se houver um cadastro pendente, um novo link será enviado",
     });
@@ -210,11 +211,19 @@ async function confirmRegistration(req, res) {
 
 async function requestPasswordReset(req, res) {
   try {
+    assertEmailDeliveryConfigured();
     const { usuarioLogin } = validateInstitutionalEmail(req.body?.email);
     const resetToken = createEmailConfirmationToken();
     const usuario = await criarRedefinicaoSenha(
       usuarioLogin,
       hashEmailConfirmationToken(resetToken),
+      (user) => createEncryptedEmailJob({
+        email: user.usuario_login,
+        language: emailLanguage(req),
+        name: user.usuario_nome || "usuário",
+        token: resetToken,
+        type: "PASSWORD_RESET",
+      }),
     );
     await registrarEventoAutenticacao(
       eventMetadata(req, {
@@ -223,13 +232,6 @@ async function requestPasswordReset(req, res) {
         usuarioLogin,
       }),
     );
-    if (usuario) {
-      await sendPasswordResetEmail({
-        email: usuario.usuario_login,
-        name: usuario.usuario_nome || "usuário",
-        token: resetToken,
-      });
-    }
     return res.status(202).json({
       message: "Se o e-mail estiver cadastrado, enviaremos as instruções de redefinição",
     });
