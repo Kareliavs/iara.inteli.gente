@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { withBase } from "@/lib/publicPath";
 import {
   Info,
   Grid2X2,
