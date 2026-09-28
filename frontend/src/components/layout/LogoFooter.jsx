@@ -1,3 +1,4 @@
+import { withBase } from "@/lib/publicPath";
 const LogoFooter = () => {
   return (
     <footer className="bg-gradient-to-b from-white to-[#f3f7fc] py-8">
@@ -12,13 +13,13 @@ const LogoFooter = () => {
 
           <div className="grid w-full grid-cols-1 justify-items-center gap-x-8 gap-y-5 sm:grid-cols-3">
             <div className="flex h-20 w-full max-w-[220px] items-center justify-center">
-              <img src="/logo_icmc.png" alt="logo ICMC" className="max-h-16 max-w-full object-contain" />
+              <img src={withBase("logo_icmc.png")} alt="logo ICMC" className="max-h-16 max-w-full object-contain" />
             </div>
             <div className="flex h-20 w-full max-w-[220px] items-center justify-center">
-              <img src="/logo_iara.png" alt="logo IARA" className="max-h-16 max-w-full object-contain" />
+              <img src={withBase("logo_iara.png")} alt="logo IARA" className="max-h-16 max-w-full object-contain" />
             </div>
             <div className="flex h-20 w-full max-w-[220px] items-center justify-center">
-              <img src="/logo_inteli.gente.png" alt="inteli.gente MCTI" className="max-h-16 max-w-full object-contain" />
+              <img src={withBase("logo_inteli.gente.png")} alt="inteli.gente MCTI" className="max-h-16 max-w-full object-contain" />
             </div>
           </div>
         </section>
@@ -33,10 +34,10 @@ const LogoFooter = () => {
 
           <div className="grid w-full max-w-2xl grid-cols-1 justify-items-center gap-x-8 gap-y-4 min-[480px]:grid-cols-2">
             <div className="flex h-9 w-full max-w-[150px] items-center justify-center opacity-65">
-              <img src="/logo_rnp.png" alt="logo RNP" className="max-h-7 max-w-full object-contain" />
+              <img src={withBase("logo_rnp.png")} alt="logo RNP" className="max-h-7 max-w-full object-contain" />
             </div>
             <div className="flex h-9 w-full max-w-[150px] items-center justify-center opacity-65">
-              <img src="/logo_ctira.png" alt="logo CTIRA" className="max-h-7 max-w-full object-contain" />
+              <img src={withBase("logo_ctira.png")} alt="logo CTIRA" className="max-h-7 max-w-full object-contain" />
             </div>
           </div>
         </section>

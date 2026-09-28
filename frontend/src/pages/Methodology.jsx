@@ -233,7 +233,7 @@ const Methodology = () => {
             {selectedTopic.id === "dimensoes" && (
             <div className="mt-8">
                 <img
-                src="/art_dimensoes.png"
+                src={withBase("art_dimensoes.png")}
                 alt="Ilustração das dimensões da metodologia"
               className="mx-auto w-full max-w-[1020px] rounded-2xl border border-[#e2e8f5]"
                 loading="lazy"
@@ -244,7 +244,7 @@ const Methodology = () => {
             {selectedTopic.id === "niveis" && (
             <div className="mt-8">
                 <img
-                src="/art_piramide_maturidade.png"
+                src={withBase("art_piramide_maturidade.png")}
                 alt="Ilustração das dimensões da metodologia"
               className="mx-auto w-full max-w-[400px] rounded-2xl border border-[#e2e8f5]"
                 loading="lazy"

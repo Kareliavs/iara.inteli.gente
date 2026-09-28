@@ -5,7 +5,7 @@ const indicatorTopics = [
   {
     id: "economica",
     label: "Econômica",
-    iconSrc: "/i_econ.png",
+    iconSrc: withBase("i_econ.png"),
     icon: Building2,
     title: "Indicadores Econômicos",
     paragraphs: [
@@ -16,7 +16,7 @@ const indicatorTopics = [
   {
     id: "sociocultural",
     label: "Sociocultural",
-    iconSrc: "/i_socio.png",
+    iconSrc: withBase("i_socio.png"),
     icon: UsersRound,
     title: "Indicadores Socioculturais",
     paragraphs: [
@@ -27,7 +27,7 @@ const indicatorTopics = [
   {
     id: "meio-ambiente",
     label: "Meio Ambiente",
-    iconSrc: "/i_ambi.png",
+    iconSrc: withBase("i_ambi.png"),
     icon: Leaf,
     title: "Indicadores de Meio Ambiente",
     paragraphs: [
@@ -38,7 +38,7 @@ const indicatorTopics = [
   {
     id: "capacidades-institucionais",
     label: "Capacidades Institucionais",
-    iconSrc: "/i_capac.png",
+    iconSrc: withBase("i_capac.png"),
     icon: Building2,
     title: "Indicadores de Capacidades Institucionais",
     paragraphs: [

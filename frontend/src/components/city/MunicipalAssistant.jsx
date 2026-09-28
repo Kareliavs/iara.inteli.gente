@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   AlertTriangle,
@@ -249,12 +250,12 @@ const MunicipalAssistant = ({
                 </span>
                 <h3 className="mt-5 text-xl font-bold text-[#26394f]">{copy.unavailableTitle}</h3>
                 <p className="mt-3 text-sm leading-7 text-[#526782]">{copy.unavailableDescription}</p>
-                <a
-                  href="/prefeitura"
+                <Link
+                  to="/prefeitura"
                   className="mt-6 inline-flex items-center justify-center rounded-xl bg-[#247dc5] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#1c68a6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7fb6ff] focus-visible:ring-offset-2"
                 >
                   {copy.unavailableAction}
-                </a>
+                </Link>
               </div>
             </div>
           ) : (

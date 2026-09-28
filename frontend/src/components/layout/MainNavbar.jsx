@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import LanguageSelector from "./LanguageSelector";
+import { withBase } from "@/lib/publicPath";
 
 const MainNavbar = () => {
   return (
@@ -7,7 +8,7 @@ const MainNavbar = () => {
       <div className="mx-auto grid h-[88px] max-w-[1920px] grid-cols-[auto_1fr_auto] items-center px-14">
         <Link to="/municipios" className="inline-flex w-fit items-center">
           <img
-            src="/logo_iara.png"
+            src={withBase("logo_iara.png")}
             alt="logo IARA"
             className="h-[45px] w-auto object-contain"
           />
@@ -17,7 +18,7 @@ const MainNavbar = () => {
           className="inline-flex w-fit items-center justify-self-start"
         >
           <img
-            src="/logo_inteli.gente.png"
+            src={withBase("logo_inteli.gente.png")}
             alt="inteli.gente MCTI"
             className="h-[72px] w-auto object-contain"
           />

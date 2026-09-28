@@ -6,6 +6,7 @@ import {
   Marker,
 } from "react-simple-maps";
 import { geoMercator, geoCentroid, geoPath } from "d3-geo";
+import { withBase } from "@/lib/publicPath";
 import { Info } from "lucide-react";
 
 const WIDTH = 800;
@@ -198,11 +199,11 @@ const BrazilMap = ({
 
   useEffect(() => {
     Promise.all([
-      fetch("/geo/brasil-municipios.geojson").then((res) => {
+      fetch(withBase("geo/brasil-municipios.geojson")).then((res) => {
         if (!res.ok) throw new Error("Erro ao carregar GeoJSON de municípios");
         return res.json();
       }),
-      fetch("/geo/brasil-estados.geojson").then((res) => {
+      fetch(withBase("geo/brasil-estados.geojson")).then((res) => {
         if (!res.ok) throw new Error("Erro ao carregar GeoJSON de estados");
         return res.json();
       }),

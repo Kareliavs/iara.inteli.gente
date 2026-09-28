@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MapContainer, GeoJSON, useMap, Marker } from "react-leaflet";
 import L from "leaflet";
+import { withBase } from "@/lib/publicPath";
 
 const maturityColors = {
   1: "#A50003",
@@ -128,7 +129,7 @@ const loadMunicipiosGeoJson = () => {
   }
 
   if (!geoJsonPromise) {
-    geoJsonPromise = fetch("/geo/brasil-municipios.geojson")
+    geoJsonPromise = fetch(withBase("geo/brasil-municipios.geojson"))
       .then((res) => {
         if (!res.ok) throw new Error("Nao foi possivel carregar o GeoJSON.");
         return res.json();
@@ -204,7 +205,7 @@ const MunicipalityMap = ({ cityCode, stateSigla }) => {
     setGeoJsonData(null);
 
     Promise.all([loadMunicipiosGeoJson(), loadMunicipios()]) /*
-      fetch("/geo/brasil-municipios.geojson").then((res) => {
+      fetch(withBase("geo/brasil-municipios.geojson")).then((res) => {
         if (!res.ok) throw new Error("Não foi possível carregar o GeoJSON.");
         return res.json();
       }),
