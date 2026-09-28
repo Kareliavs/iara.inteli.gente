@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { withBase } from "@/lib/publicPath";
 import { UsersRound, Leaf, Building2, Network } from "lucide-react";
 
 const indicatorTopics = [
